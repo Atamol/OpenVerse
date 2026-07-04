@@ -1,0 +1,62 @@
+<svg viewBox="0 0 960 740" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ttl desc" font-family="system-ui, 'Segoe UI', Meiryo, sans-serif">
+  <title id="ttl">通信シーケンス</title>
+  <desc id="desc">クライアント，APIサーバー，Nodeバトルサーバー間の通信の流れ．部屋を立ててバトルする例</desc>
+  <defs>
+    <marker id="arr" markerWidth="11" markerHeight="8" refX="8" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#444"/>
+    </marker>
+    <marker id="arrL" markerWidth="11" markerHeight="8" refX="8" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L9,3 L0,6 Z" fill="#8a8a8a"/>
+    </marker>
+  </defs>
+
+  <rect x="8" y="8" width="944" height="724" rx="14" fill="#ffffff" stroke="#e2e2e2"/>
+
+  <text x="36" y="46" font-size="21" font-weight="700" fill="#1a1a1a">通信シーケンス: 部屋を立ててバトル</text>
+  <text x="36" y="70" font-size="13" fill="#666">ホストが部屋を作成し，フレンドが参加してバトル開始まで</text>
+
+  <rect x="90" y="90" width="160" height="38" rx="8" fill="#2f6f9f"/>
+  <text x="170" y="114" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">クライアント</text>
+  <rect x="400" y="90" width="160" height="38" rx="8" fill="#3f8f5f"/>
+  <text x="480" y="114" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">APIサーバー</text>
+  <rect x="710" y="90" width="160" height="38" rx="8" fill="#c07f3f"/>
+  <text x="790" y="114" text-anchor="middle" fill="#fff" font-size="14" font-weight="600">Nodeバトル</text>
+
+  <line x1="170" y1="128" x2="170" y2="628" stroke="#d8d8d8" stroke-dasharray="4 4"/>
+  <line x1="480" y1="128" x2="480" y2="628" stroke="#d8d8d8" stroke-dasharray="4 4"/>
+  <line x1="790" y1="128" x2="790" y2="628" stroke="#d8d8d8" stroke-dasharray="4 4"/>
+
+  <text x="325" y="172" text-anchor="middle" font-size="12.5" fill="#333">1. 起動チェック  check/game_start</text>
+  <line x1="173" y1="180" x2="477" y2="180" stroke="#444" stroke-width="1.4" marker-end="url(#arr)"/>
+
+  <text x="325" y="222" text-anchor="middle" font-size="12.5" fill="#333">2. result_code: 1  {data_headers, data}</text>
+  <line x1="477" y1="230" x2="173" y2="230" stroke="#8a8a8a" stroke-width="1.3" stroke-dasharray="6 3" marker-end="url(#arrL)"/>
+
+  <text x="325" y="272" text-anchor="middle" font-size="12.5" fill="#333">3. ルーム作成  RoomCreate</text>
+  <line x1="173" y1="280" x2="477" y2="280" stroke="#444" stroke-width="1.4" marker-end="url(#arr)"/>
+
+  <text x="325" y="322" text-anchor="middle" font-size="11.5" fill="#333">4. room_id=R-7F3A, node_server_url=100.64.0.1:3000</text>
+  <line x1="477" y1="330" x2="173" y2="330" stroke="#8a8a8a" stroke-width="1.3" stroke-dasharray="6 3" marker-end="url(#arrL)"/>
+
+  <text x="480" y="366" text-anchor="middle" font-size="11.5" fill="#b06a2f" font-style="italic">node_server_urlがバトルサーバーを決める (実行時に注入)</text>
+
+  <text x="480" y="410" text-anchor="middle" font-size="12.5" fill="#333">5. Socket.IO接続  (viewer_id=1001)</text>
+  <line x1="173" y1="418" x2="787" y2="418" stroke="#444" stroke-width="1.4" marker-end="url(#arr)"/>
+
+  <text x="480" y="452" text-anchor="middle" font-size="12.5" fill="#333">6. InitNetwork</text>
+  <line x1="787" y1="460" x2="173" y2="460" stroke="#8a8a8a" stroke-width="1.3" stroke-dasharray="6 3" marker-end="url(#arrL)"/>
+
+  <rect x="120" y="486" width="740" height="120" rx="6" fill="none" stroke="#c8c8c8" stroke-dasharray="5 3"/>
+  <text x="134" y="504" font-size="11" fill="#8a8a8a">loop  ターン進行 (くり返し)</text>
+
+  <text x="480" y="536" text-anchor="middle" font-size="12.5" fill="#333">7. emit "msg"  uri=TurnStart  (encryptForNode)</text>
+  <line x1="173" y1="544" x2="787" y2="544" stroke="#444" stroke-width="1.4" marker-end="url(#arr)"/>
+
+  <text x="480" y="576" text-anchor="middle" font-size="12.5" fill="#333">8. 盤面更新  (operation列)</text>
+  <line x1="787" y1="584" x2="173" y2="584" stroke="#8a8a8a" stroke-width="1.3" stroke-dasharray="6 3" marker-end="url(#arrL)"/>
+
+  <rect x="36" y="642" width="888" height="76" rx="8" fill="#f6f6f6" stroke="#e6e6e6"/>
+  <text x="52" y="666" font-size="12.5" font-weight="600" fill="#444">ペイロードの包み方</text>
+  <text x="52" y="688" font-size="12" fill="#555">API : object -&gt; JSON -&gt; AES(末尾に鍵) -&gt; HTTP body</text>
+  <text x="52" y="708" font-size="12" fill="#555">Node : object -&gt; JSON -&gt; AES(先頭に鍵) -&gt; MsgPack(string) -&gt; socket.emit</text>
+</svg>

@@ -1,0 +1,12 @@
+bin/
+obj/
+
+analysis/
+tests/Shadowverse/
+
+.vs/
+.idea/
+*.user
+
+Thumbs.db
+.DS_Store
