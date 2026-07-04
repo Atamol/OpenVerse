@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using OpenVerse.Api;
 using OpenVerse.Common;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,6 +14,18 @@ if (Directory.Exists(stubDir))
 var udids = new ConcurrentDictionary<string, string>();
 
 var manifestDir = Path.Combine(AppContext.BaseDirectory, "stubs", "manifest");
+
+var dbPath = Environment.GetEnvironmentVariable("OPENVERSE_DECK_DB")
+    ?? Path.Combine(AppContext.BaseDirectory, "openverse.db");
+var deckStore = new DeckStore(dbPath);
+var deckHandler = new DeckHandler(deckStore);
+
+var users = new UserStore();
+var rooms = new RoomStore
+{
+    NodeServerUrl = Environment.GetEnvironmentVariable("OPENVERSE_NODE_URL") ?? "127.0.0.1:3001",
+};
+var roomHandler = new RoomHandler(rooms, users);
 
 app.MapMethods("/{**path}", ["GET", "POST"], async context =>
 {
@@ -35,9 +48,10 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         udids.TryGetValue(sid, out udid);
 
     Console.WriteLine($"\n{req.Method} {path}  ({body.Length} bytes) udid={udid}");
+    string? reqJson = null;
     if (udid is not null && body.Length > 32)
     {
-        try { Console.WriteLine($"  req: {WireCodec.DecodeRequest(body, udid)}"); }
+        try { reqJson = WireCodec.DecodeRequest(body, udid); Console.WriteLine($"  req: {reqJson}"); }
         catch (Exception e) { Console.WriteLine($"  decode failed: {e.Message}"); }
     }
 
@@ -59,17 +73,24 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
     }
 
     if (udid is not null)
-        await context.Response.WriteAsync(WireCodec.EncodeResponse(Response(path), udid));
+        await context.Response.WriteAsync(WireCodec.EncodeResponse(Response(path, reqJson, udid), udid));
     else
         await context.Response.WriteAsync("{}");
 
-    string Response(string p)
+    string Response(string p, string? json, string userKey)
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        string data =
-            p.Contains("load/index") ? stubs.GetValueOrDefault("load_index", "{}") :
-            p.Contains("game_start") ? stubs.GetValueOrDefault("game_start", "{}") :
-            "{}";
+        string data;
+        if (DeckHandler.CanHandle(p) && json is not null)
+            data = deckHandler.Handle(p, json, userKey);
+        else if (RoomHandler.CanHandle(p) && json is not null)
+            data = roomHandler.Handle(p, json, userKey);
+        else if (p.Contains("load/index"))
+            data = stubs.GetValueOrDefault("load_index", "{}");
+        else if (p.Contains("game_start"))
+            data = stubs.GetValueOrDefault("game_start", "{}");
+        else
+            data = "{}";
         return $"{{\"data_headers\":{{\"result_code\":1,\"servertime\":{now}}},\"data\":{data}}}";
     }
 });
