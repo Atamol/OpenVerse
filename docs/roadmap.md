@@ -16,18 +16,18 @@
 
 詳細は[protocol.md](protocol.md)にあります．
 
-## Phase 1: 通信の土台と初回接続 (CURRENT)
+## Phase 1: 通信の土台と初回接続 (完了)
 
-![](https://progress-bar.xyz/66?width=500&title=Propgress:)
+![](https://progress-bar.xyz/100?width=500&title=Propgress:)
 
 - [x] 骨組み (Common / Api / Battle)
 - [x] 暗号ライブラリ`WireCrypto` (AES 2系統)
 - [x] MessagePack統合
 - [x] 通信コーデック`WireCodec` (リクエスト復号，レスポンス暗号化)
 - [x] 受信機 (ヘッダとボディをログ，リクエストをJSONに復号，タイトルチェックにスタブ応答)
-- [ ] リダイレクト (hosts + http化パッチ) で実クライアントを受信機に流す
-- [ ] 実トラフィックで暗号とヘッダを確かめる
-- [ ] 起動チェックに応答してタイトルを抜ける
+- [x] リダイレクト (hosts + http化パッチ) で実クライアントを受信機に流す
+- [x] 実トラフィックで暗号とヘッダを確かめる
+- [x] 起動チェックに応答してタイトルを抜ける
 
 ## Phase 2: マスタデータと画面到達
 
