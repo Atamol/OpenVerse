@@ -1,5 +1,9 @@
 ![](https://progress-bar.xyz/14?width=100&title=Propgress:)
 
+### [Discord](https://discord.gg/VMjWKegucJ)
+
+### [日本語版](README.md)
+
 # OpenVerse
 
 An emulation server project for the original Shadowverse (Steam version), whose service ended on 2026-07-01 11:00.

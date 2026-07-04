@@ -1,5 +1,9 @@
 ![](https://progress-bar.xyz/14?width=100&title=Propgress:)
 
+### [Discord](https://discord.gg/VMjWKegucJ)
+
+### [English Here](README.en.md)
+
 # OpenVerse
 
 2026年7月1日 (水) 11:00にサービスが終了した，Shadowverse (Steam版) のエミュレーションサーバーのプロジェクト．  
