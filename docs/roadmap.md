@@ -29,15 +29,23 @@
 - [ ] 実トラフィックで暗号とヘッダを確かめる
 - [ ] 起動チェックに応答してタイトルを抜ける
 
-## Phase 2: ホームまで
+## Phase 2: マスタデータと画面到達
 
 ![](https://progress-bar.xyz/0?width=500&title=Propgress:)
 
 - [ ] マスタデータ配信 (全カード所持で返す)
-- [ ] ホーム画面に到達
-- [ ] デッキ編集の保存
+- [ ] ホーム画面または自作UIに到達
 
-## Phase 3: ルームマッチ
+## Phase 3: デッキ編成
+
+![](https://progress-bar.xyz/0?width=500&title=Propgress:)
+
+- [ ] デッキCRUD API (`deck/info`, `deck/create`, `deck/edit`, `deck/delete`)
+- [ ] 全フォーマット対応
+- [ ] 制限カードの適用
+- [ ] 編集画面 (純正？)
+
+## Phase 4: ルームマッチ
 
 ![](https://progress-bar.xyz/0?width=500&title=Propgress:)
 
@@ -45,7 +53,7 @@
 - [ ] ルームの作成と参加
 - [ ] マッチ応答で`node_server_url`を返してバトルサーバーへ誘導
 
-## Phase 4: バトル
+## Phase 5: バトル
 
 ![](https://progress-bar.xyz/0?width=500&title=Propgress:)
 
@@ -53,7 +61,7 @@
 - [ ] operationプロトコル解析 (サーバー権威か，カード効果の所在)
 - [ ] バトルエンジン (ターン進行，進化，カード効果．shadow_sim参考)
 
-## Phase 5: 配布と運用
+## Phase 6: 配布と運用
 
 ![](https://progress-bar.xyz/0?width=500&title=Propgress:)
 
