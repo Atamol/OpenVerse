@@ -2,7 +2,7 @@
 
 # OpenVerse
 
-A preservation project for the original Shadowverse (Steam version), whose service ended on 2026-07-01 11:00.
+An emulation server project for the original Shadowverse (Steam version), whose service ended on 2026-07-01 11:00.
 The goal is to keep deck editing and room matches playable after shutdown.
 
 Language: English (this file). The source is Japanese: see [`README.md`](README.md).
