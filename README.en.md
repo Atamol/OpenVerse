@@ -1,6 +1,6 @@
 ![](https://progress-bar.xyz/14?width=100&title=Propgress:)
 
-### [Discord](https://discord.gg/VMjWKegucJ)
+### [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/VMjWKegucJ)
 
 ### [日本語版](README.md)
 
