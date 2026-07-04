@@ -11,7 +11,7 @@
 
 ## サーバー (本番ドメイン)
 
-`Cute.CustomPreference.InitFrameWorkSettings`にハードコードされていた値です．
+`Cute.CustomPreference.InitFrameWorkSettings`の値です．
 
 | 用途 | URL | スキーム |
 | --- | --- | --- |
@@ -21,12 +21,10 @@
 | DeckBuilder | `shadowverse-portal.com/api/v1/game_api/` | https |
 
 - APIとCDNは`SetScemeMode(Https)`でHTTPS固定
-- NodeのURLは起動時は空．マッチ応答の`data.node_server_url`が`SetNodeServerURL`に渡す
-- OpenVerseがマッチ応答で自前のNodeアドレスを返せば，クライアントは自動でそこに繋ぐ (バイナリパッチ不要)
+- NodeのURLは起動時は空で，マッチ応答の`data.node_server_url`が`SetNodeServerURL`に渡る
+- マッチ応答で自前Nodeアドレスを返せばクライアントはそこに繋ぐ (バイナリパッチ不要)
 
 ## 暗号 (`CryptAES`)
-
-鍵はメッセージごとにランダム生成し，暗号文に同梱します．IVは端末のUDID由来です．
 
 ### API用`encrypt` / `EncryptRJ256Api`
 - AES-256-CBC，ブロック128
@@ -47,7 +45,7 @@
 - `encrypt=true`のとき`CryptAES.encrypt` (= EncryptRJ256Api) を通す
 - リクエストは`PostParams`をJSON→MessagePack→AESで暗号化して生バイトで送る
 - レスポンス: `{ data_headers: { result_code, servertime }, data: {...} }`
-- レスポンスは`CryptAES.decrypt`後に`MessagePackSerializer.ToJson`で読む．ボディはbase64テキスト
+- レスポンスは`CryptAES.decrypt`後に`MessagePackSerializer.ToJson`で読み，ボディはbase64テキスト
 - 成功は`result_code == 1`
 
 ### Node (Socket.IO)
@@ -71,15 +69,119 @@ Udid，ShortUdid，SessionId，Param，Device，AppVersion，ResVersion，Device
 ## 起動フロー
 
 1. `SetUp.InitFrameWorkSettings`: URLとスキームを設定し，`NetworkManager.Certification()`を呼ぶ
-2. `CheckSpecialTitleTask`: 初回リクエスト (encrypt=true, useJson=false)．`Wizard.BaseTask`派生．`data_headers.result_code`と`servertime`だけ必要
-3. `GameStartCheckTask` (`check/game_start`): 起動チェック．`Cute.NetworkTask`派生．`data.tos_state`，`policy_state`，`kor_authority_state`，`tos_id`，`policy_id`，`kor_authority_id`が必要
+2. `CheckSpecialTitleTask`: 初回リクエスト (encrypt=true, useJson=false)．`Wizard.BaseTask`派生で，`data_headers.result_code`と`servertime`だけ必要
+3. `GameStartCheckTask` (`check/game_start`): 起動チェック．`Cute.NetworkTask`派生で，`data.tos_state`，`policy_state`，`kor_authority_state`，`tos_id`，`policy_id`，`kor_authority_id`が必要
 4. 以降ホーム遷移
 
 ## APIエンドポイント (`CuteNetworkDefine.ApiUrlList`，一部)
 
-`tool/signup`，`check/special_title`，`check/game_start`，`account/get_by_social_account`，`account/chain_by_transition_code`，`payment/*`，`payment_pc/*` (Steam課金)
+起動・認証・課金系: `tool/signup`，`check/special_title`，`check/game_start`，`account/get_by_social_account`，`account/chain_by_transition_code`，`payment/*`，`payment_pc/*`
 
-本編ゲームAPIは`Wizard.BaseTask`派生．パスはtypeから決まります (要調査)．
+本編ゲームAPIは`Wizard.BaseTask`派生で，種別ごとに以下です．
+
+## デッキAPI
+
+Format wire code (以下 `deck_format`) は `1=Rotation, 2=Unlimited, 3=PreRotation, 4=Crossover, 5=MyRotation, 10=TwoPick, 20=Sealed, 31=Hof, 33=Windfall, 39=Avatar, 0=All`で，内部enumとは別体系です (`FormatConvertApi`で変換)．
+
+| Path | Request | Response 主要フィールド |
+| --- | --- | --- |
+| `deck/info` | `deck_format` | Format.All時: `data.user_deck_rotation` / `_unlimited` / `_pre_rotation` / `_crossover` / `_my_rotation` / `_avatar` (全部guarded)．単一format時: `data.user_deck_list`で，`data.maintenance_card_list` は常にunguarded必須 |
+| `deck/update` | `deck_no, class_id, leader_skin_id, is_random_leader_skin, leader_skin_id_list, sleeve_id, deck_name, is_delete(0/1), card_id_array, deck_format, rotation_id` (Crossoverは`sub_class_id`追加) | 更新後のuser_deck_*group + `data.achieved_info:{}` + `data.reward_list:[]` (両方unguarded) |
+| `deck/get_empty_deck_number` | `deck_format` | `data.empty_deck_num:int` (0以下は空きなし) |
+| `deck/update_name` | `deck_no, deck_name, deck_format` | `data.user_deck` (1件) |
+| `deck/update_sleeve` | `deck_no, sleeve_id, deck_format` | `data.user_deck` |
+| `deck/update_leader_skin` | `deck_no, leader_skin_id, deck_format` | `data.user_deck` |
+| `deck/update_order` | `deck_order:int[], deck_format` | 更新後のgroup |
+| `deck/delete_deck_list` | `deck_no_list:int[], deck_format` | 更新後のgroup |
+| `auto_deck/create` | `deck_format, class_id, chosen_card_ids, tournament_id, rotation_id` | `data:[int...]` (フラットなカードID配列) |
+
+unguarded必須キーは `deck_name` (string), `class_id` (int 1-8), `card_id_array` (int[]) で，他はguardedです．
+
+構築ルールはクライアント側で完結し，サーバーは`restricted_card_exists`と`maintenance_card_list`を返すのみで，OpenVerseは全カード開放なので所持判定はいりません．
+
+デッキ共有 (portalの`deck_code` / `deck`) は別ホストなので後回しで良いです．
+
+## ルームマッチAPI (HTTP側)
+
+| Path | 用途 | 主要Response |
+| --- | --- | --- |
+| `open_room/create_room` | オーナー作成 | `data.room_id` (5桁数字文字列), `data.node_server_url` (スキーム抜き), `data.battle_id`, `data.is_invitation_user:bool` (全部unguarded) |
+| `open_room/enter_room` | ビジター入室 | `data.result_reason:int` (0=成功), `data.oppo_info.{oppoId,battlePoint,degreeId,emblemId,country_code,rank,max_rank,userName,isOfficial}`, `data.node_server_url`, `data.is_friend:int`, `data.guild_id/oppo_guild_id` (全unguarded) |
+| `open_room/leave_room` | ビジター退室 | `data.result_reason`, `data.room_result:int(1=OK)` |
+| `open_room/close_room` | オーナー解散 | `base.Parse`のみ (result_code=1で十分) |
+| `open_room/force_release_room` | オーナー強制解散 | `data.room_result:int(1=OK)`で，クライアント側は10秒backoffでリトライ |
+| `open_room/initialize_room_battle` | Socket接続後・戦闘開始前のbookkeeping | `data.battle_id`, `data.my_battle_result:{}`, `data.opponent_battle_result:{}`, `data.used_deck:int`, `data.is_settled:int` |
+| `open_room_battle/set_deck` | 部屋内デッキ選択 | 未parse (result_code=1で十分)で，variantとして`gathering_room_battle/set_deck`等あり |
+| `deck/deck_entry` | 複数デッキ選択 (Bo3等) | 未parse |
+| `open_room/ban_deck` | デッキbanフェーズ | 未parse |
+
+補足:
+- `room_id`はサーバー採番の5桁数字文字列
+- `node_server_url`はスキーム抜きのhost:port (`127.0.0.1:3001`など)で，クライアントが`ws://`をprepend
+- ビジター参加通知はHTTPポーリングではなくSocketの`RoomEntry` pushで飛んでくる
+- Socket ACK待ちタイムアウトは10秒
+
+## do_matching (対戦相手待機)
+
+| Path | 用途 |
+| --- | --- |
+| `battle/do_matching` | ランクバトル |
+| `open_room_battle/do_matching` | 部屋バトル |
+
+Responseは `data.matching_state:int` (3004=SUCCEEDED, 3007=SUCCEEDED_OWNER, 3011=SUCCEEDED_AI), `data.timeout_period:int`, `data.retry_period:int`, `data.battle_id:string`, `data.node_server_url:string`, `data.card_master_id:int` (成功時) で，クライアントは待機系→成功系に切り替わるまでpollingします．
+
+## バトル (Socket.IO)
+
+接続先: `ws://<node_server_url>/?EIO=4&transport=websocket`
+
+### WS upgradeヘッダ
+
+URLクエリではなくHTTPヘッダに載ります．
+
+- `BattleId`: 生文字列
+- `viewerId`: `CryptAES.encryptForNode(viewerId.ToString())`で，先頭32文字が鍵，残りがbase64暗号文
+- `User-Agent`: `SystemInfo.operatingSystem`
+
+### イベント名
+
+- `msg`: 通常．payload = `MessagePack(CryptAES.encryptForNode(JSON(...)))`で，サーバーはintの`pubSeq`でACK必須
+- `hand`: 手札操作 (touch / slide / select_skill)．payload = `MessagePack(JSON(...))` (AESなし)
+- `synchronize`: サーバーから送るpush専用で，全uriがここに乗るので`event`名を`uri`名にしないこと
+- `alive`: heartbeat (Gungnir)で，InitNetwork成功後に開始
+
+### payload共通フィールド
+
+- `uri`: コマンド種別
+- `viewerId:int`
+- `uuid:string` (`Certification.Udid`)
+- `bid:string` (Matched後に付くbattle_id)
+- `pubSeq:int` (client→server連番，1始まりmonotonic)
+- `playSeq:int` (server→client連番，サーバー採番)
+- `cat:int` (EmitCategory: `1=battle, 2=matching, 3=room, 11=watch, 99=general`)
+
+### 接続後のシーケンス
+
+1. Client→`InitNetwork` (cat:99) → Server→`InitNetwork` echo (payloadは任意で`_initNetworkSuccess`が立てば通る)
+2. Client→`RoomCreate` (owner) or `RoomEntry` (visitor) (cat:3) → Server ACKに`resultCode:0`
+3. Server→`Matched`: `{uri, bid, turnState:0|1, selfInfo, oppoInfo, selfDeck:[{idx,cardId}...], playSeq:1}`
+4. Both→`Loaded` (cat:1, pubSeq:2) → Server→`BattleStart` (playSeq:2): `{uri, battleStartDate:<unix-microseconds>, selfInfo, oppoInfo}`
+5. Server→`Deal` (playSeq:3): `{uri, cards:[{idx,cardId,isSelf,RedrawCardPosition}...]}` → Client→`Swap` → Server→`Ready`
+
+### Matched必須subkey
+
+欠けるとクライアントがクラッシュします．
+
+- `selfInfo`: `rank, classId, charaId, viewerId, userName, fieldId, seed, deckCount`
+- `oppoInfo`: 同じ + optional `isOfficial`
+- `selfDeck`要素: `idx, cardId`
+
+### プレイヤー識別
+
+WS upgradeの`BattleId`ヘッダ + `viewerId`ヘッダ (要復号)，各msg payloadの`viewerId`と`uuid`で照合し，対戦相手のviewerIdはサーバー側でペアリングして`Matched.oppoInfo.viewerId`に載せます．
+
+### ROOM_URI
+
+`Wizard.RoomMatch.RoomUri`の列挙値をそのまま乗せ，今回使うのは `RoomCreate / RoomEntry / GatheringEntry / Leave / Release / ForceRelease / DeckSelect / DeckConfirm / TurnSelect / RoomReady / Rematch`くらいです．
 
 ## 結果コード (一部)
 
@@ -90,7 +192,7 @@ Udid，ShortUdid，SessionId，Param，Device，AppVersion，ResVersion，Device
 
 ## 通信シーケンス (例)
 
-部屋を立ててバトルする流れです．図: [diagrams/battle-sequence.svg](diagrams/battle-sequence.svg)
+部屋バトルの流れです (図: [diagrams/battle-sequence.svg](diagrams/battle-sequence.svg))．
 
 ```mermaid
 sequenceDiagram
@@ -117,7 +219,7 @@ sequenceDiagram
 
 ## 未解明
 
-- 本編APIのパス命名 (`Wizard.BaseTask`のtypeからパスへ)
-- `DevAccessSecretKey` / `CardMasterHash`の生成方法．サーバーが検証するか
-- ルームマッチのシーケンス (`Wizard.RoomMatch`のRoomOwner / RoomVisitor / RoomConnectController)
-- バトルのoperationプロトコル (サーバー権威か，カード効果ロジックの所在)
+- `DevAccessSecretKey` / `CardMasterHash`の生成方法とサーバー側での検証有無
+- BattleStart以降の全バトルURI (TurnStart / PlayActions / TurnEndActions / TurnEnd / Judge / BattleFinish 等) の詳細と，operation列の内訳
+- カード効果の解決先 (サーバー権威かクライアント権威か)
+- 復帰系 (`open_room/get_recovery_params`, `battle/get_recovery_params`) のフル仕様

@@ -38,7 +38,7 @@
 
 ### 実装コスト
 
-コード側は20行程度 (ヘッダ読取 + パスから言語トークン抽出 + stubフォルダ分岐)．
+コード側は20行程度です (ヘッダ読取 + パスから言語トークン抽出 + stubフォルダ分岐)．
 
 手間はENアセット (`master_cardnametextmaster.unity3d`など) の入手にかかっています．公式CDNは死んでいるため，EN版を長くプレイした人のローカルキャッシュ (`AppData/LocalLow/Cygames/Shadowverse/a/`) を確保する必要があります．
 
