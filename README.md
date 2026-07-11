@@ -2,7 +2,7 @@
 
 ### [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/VMjWKegucJ)
 
-### ![en](https://flagcdn.com/20x15/gb.png) [English Here](README.en.md)
+### 🇬🇧 [English Here](README.en.md)
 
 # OpenVerse
 
