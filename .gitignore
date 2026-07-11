@@ -1,7 +1,15 @@
 bin/
 obj/
+release/
 
 ref/
+src/OpenVerse.Api/certs/
+
+src/OpenVerse.Api/data/*
+!src/OpenVerse.Api/data/practice_info.json
+!src/OpenVerse.Api/data/starter_decks.json
+!src/OpenVerse.Api/data/deck_intro.json
+
 analysis/
 tests/Shadowverse/
 
