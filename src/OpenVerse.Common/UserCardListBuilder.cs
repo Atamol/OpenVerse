@@ -3,11 +3,8 @@ using System.Text.Json;
 
 namespace OpenVerse.Common;
 
-// Builds user_card_list granting every buildable card so the deck editor's ownership filter
-// (GetPossessionCardNum > 0) passes. Buildable = id prefix 100-129. Also grants alternate
-// illustrations referenced by an alts_ array (they own as their own card_id) and, when premium is
-// on, the foil variant id of each buildable card. Alt grants are limited to prefix 100-129/701-720:
-// some alts_ point at 900-prefix summon tokens that share a name but are not collectible.
+// grant every collectible card so the deck editor's ownership filter (GetPossessionCardNum > 0) passes
+// alt grants exclude 900-prefix tokens: some alts_ point at summon tokens that share a name but are not collectible
 public static class UserCardListBuilder
 {
     static bool IsAltGrantable(long id)
@@ -16,8 +13,7 @@ public static class UserCardListBuilder
         return p is >= 100 and <= 129 or >= 701 and <= 720;
     }
 
-    // Grants every collectible card from the real card_master CSV (col0=card_id, col4=is_foil, both
-    // quote-free so a plain split works). Collectible = sets 100-132 and alt sets 701-722, not tokens or foils
+    // col0=card_id, col4=is_foil, quote-free so a plain split works. collectible = sets 100-132 + alt 701-722
     public static string BuildFromCsv(string csv, int number = 3)
     {
         var sb = new StringBuilder("[");

@@ -1,8 +1,7 @@
 namespace OpenVerse.Api;
 
-// Practice (CP対戦): the battle and AI run client-side, so the server only serves the opponent roster
-// and records the result. The AI deck/logic load from the client's master_practice_ai_setting bundle,
-// keyed by each entry's ai_deck_level/ai_logic_level
+// battle and AI run client-side, so this only serves the opponent roster and records the result
+// AI decks/logic load from the client's master_practice_ai_setting bundle by ai_deck_level/ai_logic_level
 public sealed class PracticeHandler
 {
     readonly string _rosterJson;

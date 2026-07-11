@@ -3,7 +3,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Api;
 
-// A deck in the 大会上位デッキ紹介 browser. Format 1 = rotation, 2 = unlimited
+// Format: 1 = rotation, 2 = unlimited
 public sealed record IntroDeck(string Name, int Clan, int Format, int[] CardIds, int ThumbnailCardId,
     string PlayerName, string Introduction);
 public sealed record IntroSeries(int SeriesId, string SeriesName, List<IntroDeck> Decks,
@@ -52,9 +52,8 @@ public sealed class DeckHandler
         }).ToArray();
     }
 
-    // load/index deck groups. The client drops empty custom-deck groups from its DeckGroupDataBase
-    // (DeckListUpdate skips count==0), so an empty format NREs in the deck editor. Seed starters
-    // once per format so each group is non-empty, then serve the user's stored decks.
+    // the client NREs in the deck editor on an empty custom-deck group (DeckListUpdate skips count==0),
+    // so seed a starter per format to keep each group non-empty
     public string BuildLoadIndexDeckGroups(string userKey)
     {
         MigrateStarters(userKey);
@@ -68,13 +67,11 @@ public sealed class DeckHandler
         });
     }
 
-    // The client turns the first empty (card_id_array == []) custom-deck slot into the "create new"
-    // button, so every deck list needs a trailing empty slot for new decks to be creatable.
+    // the client turns the first empty slot into the "create new" button, so every list needs a trailing empty slot
     object[] DeckListWithEmptySlot(string userKey, int format) =>
         [.. _store.List(userKey, format).Select(ToJson), ToJson(new Deck { Format = format })];
 
-    // Upgrade the auto-generated "スターター" decks a user was seeded with to the official ones. Matches by
-    // the seeded name and only rewrites when the cards differ, so it is idempotent.
+    // upgrade the seeded "スターター" decks to the official ones (match by name, rewrite only when cards differ)
     void MigrateStarters(string userKey)
     {
         if (_starters.Count == 0) return;
@@ -106,8 +103,7 @@ public sealed class DeckHandler
             });
     }
 
-    // introduce_deck/info: returns the requested series_id's decks plus the full series_list of periods.
-    // Copying a deck runs the normal deck/info + deck/update flow. Falls back to starters if no intro data
+    // falls back to sample starter decks when no intro data is loaded
     public string IntroduceDeckInfo(string reqJson)
     {
         if (_introSeries.Count == 0)
@@ -134,7 +130,6 @@ public sealed class DeckHandler
         });
     }
 
-    // introduce_deck/series_list: just the list of periods.
     public string IntroduceDeckSeriesList() =>
         Serialize(new Dictionary<string, object> { ["series_list"] = IntroSeriesList() });
 
@@ -183,8 +178,7 @@ public sealed class DeckHandler
         };
     }
 
-    // practice/deck_list is parsed by the same ParseDeckInfoResponceData as deck/info, so it needs the
-    // deck/info shape (each group is a plain deck array), not the load/index shape.
+    // client parses practice/deck_list with the same ParseDeckInfoResponceData as deck/info, so use that shape
     public string PracticeDeckList(string userKey) => Info(userKey, 0);
 
     string Info(string userKey, int deckFormat)

@@ -2,8 +2,7 @@ using System.Text.Json;
 
 namespace OpenVerse.Common;
 
-// Builds one starter deck per class from the shadowverse card data, so the client's
-// DefaultDeck fallback (deck/info default_deck_list) has real card_ids that exist in card_master.
+// generate a starter per class with real card_ids, for the client's default_deck_list fallback
 public static class DefaultDeckBuilder
 {
     static readonly Dictionary<int, string> ClanName = new()
@@ -19,7 +18,6 @@ public static class DefaultDeckBuilder
         using var doc = JsonDocument.Parse(cardJson);
         var root = doc.RootElement;
 
-        // group card_ids by craft, followers/spells only, exclude tokens
         var byCraft = new Dictionary<string, List<int>>();
         foreach (var e in root.EnumerateObject())
         {

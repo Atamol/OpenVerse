@@ -75,9 +75,8 @@ public sealed class DeckStore
         return r.Read() ? Read(r) : null;
     }
 
-    // deck_no is the (user_key, deck_no) primary key, so it must be unique per user across
-    // all formats — scoping MAX to a format collides format 1 and 2 at deck_no 1 and the
-    // second save overwrites the first.
+    // deck_no is the (user_key, deck_no) primary key, so it must be unique per user across all formats
+    // scoping MAX to a format would collide format 1 and 2 at deck_no 1, and the second save overwrites the first
     public int NextDeckNo(string userKey, int format)
     {
         using var c = Open();

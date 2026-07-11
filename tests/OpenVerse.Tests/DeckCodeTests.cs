@@ -34,7 +34,7 @@ public class DeckCodeTests : IDisposable
     public void CanHandleMatchesOnlyPortalDeckEndpoints(string path, bool expected)
         => Assert.Equal(expected, DeckCodeHandler.CanHandle(path));
 
-    // generate (TwoPickUI / DeckDetail) then resolve (DeckCreateMenuUI) is the whole loop friends use.
+    // generate (TwoPickUI / DeckDetail) then resolve (DeckCreateMenuUI) is the whole loop
     [Fact]
     public void GenerateThenResolveRoundTrips()
     {

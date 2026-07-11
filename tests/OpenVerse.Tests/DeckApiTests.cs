@@ -52,8 +52,7 @@ public class DeckApiTests : IClassFixture<DeckApiTests.Fixture>
         return JsonDocument.Parse(backJson).RootElement.GetProperty("data");
     }
 
-    // load/index splices user_card_list + user_sleeve_list into the stub via string concat, so this
-    // also proves the assembled blob stays valid JSON (Call would throw on a parse failure).
+    // load/index splices user_card_list + sleeves into the stub by string concat, so this also proves the blob stays valid JSON
     [Fact]
     public async Task LoadIndexGrantsSleevesAndAlt()
     {

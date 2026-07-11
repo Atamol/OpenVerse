@@ -2,8 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace OpenVerse.Common;
 
-// Self-hosted deck codes. The real portal's deck-code backend is gone, so we mint and resolve
-// codes ourselves; a code maps to the deck payload the client's GetDeckDataFromCode expects.
+// self-hosted deck codes: the real portal's deck-code backend is gone, so codes are minted and resolved here
 public sealed class DeckCodeStore
 {
     public sealed record Entry(int Clan, int SubClan, int Format, int[] CardIds, string? RotationId);
@@ -77,7 +76,7 @@ public sealed class DeckCodeStore
         return new Entry(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2), cards, rot);
     }
 
-    // created_at is ISO 8601 UTC ("O"), so a string compare against the cutoff is chronological.
+    // created_at is ISO 8601 UTC ("O"), so a string compare against the cutoff is chronological
     public int PurgeOlderThan(TimeSpan maxAge)
     {
         var cutoff = DateTime.UtcNow.Subtract(maxAge).ToString("O");

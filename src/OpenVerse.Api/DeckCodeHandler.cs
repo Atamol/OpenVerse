@@ -12,14 +12,13 @@ public sealed class DeckCodeHandler
 
     public DeckCodeHandler(DeckCodeStore store) => _store = store;
 
-    // Portal deck-builder endpoints: resolve is /api/v1/game_api/deck, generate is /..._api/deck_code.
-    // The game_api prefix keeps this off the main server's own deck/* routes.
+    // game_api prefix keeps this off the server's own deck/* routes
     public static bool CanHandle(string path) =>
         path.Contains("game_api", StringComparison.OrdinalIgnoreCase)
         && (path.EndsWith("/deck", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith("/deck_code", StringComparison.OrdinalIgnoreCase));
 
-    // returns (result_code, data json). result_code != 1 makes the client report an invalid code.
+    // result_code != 1 makes the client report an invalid code
     public (int ResultCode, string Data) Handle(string reqJson)
     {
         using var doc = JsonDocument.Parse(reqJson);

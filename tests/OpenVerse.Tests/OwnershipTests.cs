@@ -6,8 +6,7 @@ namespace OpenVerse.Tests;
 
 public class OwnershipTests
 {
-    // Buildable card whose alts_ lists an alt illustration (7xx) plus a same-name summon token (900);
-    // the alt itself; the token; and an unrelated token no card references.
+    // fixture: a buildable card, its alt illustration (7xx), a same-name token (900) in its alts_, and a standalone token
     const string Cards = """
     {
       "100411010":{"id_":100411010,"name_":"a","craft_":"ドラゴン","rarity_":"レジェンド","type_":"フォロワー","pp_":5,"baseAtk_":5,"baseDef_":5,"evoAtk_":7,"evoDef_":7,"trait_":"-","expansion_":"x","baseEffect_":"-","baseFlair_":"-","evoEffect_":"-","evoFlair_":"-","rotation_":false,"tokens_":[],"alts_":[705411010,900411010]},
@@ -87,7 +86,7 @@ public class OwnershipTests
         Assert.Equal(CardMasterCodec.Columns.Length, foil.Length);
     }
 
-    // Mirrors the client's ConvertCSV_Array: quoted fields keep internal commas, "" is an escaped quote.
+    // mirrors the client's ConvertCSV_Array: quoted fields keep internal commas, "" is an escaped quote
     static string[] SplitCsvRow(string row)
     {
         var fields = new List<string>();
@@ -118,7 +117,6 @@ public class OwnershipTests
             .TrimEnd('\n').Split('\n').Select(SplitCsvRow).ToList();
         // the RFC4180 parser the client uses keeps every row at the full column count
         Assert.All(rows, r => Assert.Equal(CardMasterCodec.Columns.Length, r.Length));
-        // _n routes to its own column: 1->play(55), 3->evolve(56), 2->attack(57)
         var card = rows.Single(r => r[0] == "100411010");
         Assert.Equal("100411010_1", card[55]);
         Assert.Equal("100411010_3", card[56]);   // evolve = cue _3
