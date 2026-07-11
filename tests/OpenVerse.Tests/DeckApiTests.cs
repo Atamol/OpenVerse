@@ -7,6 +7,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
+[Collection("Sqlite")]
 public class DeckApiTests : IClassFixture<DeckApiTests.Fixture>
 {
     public class Fixture : WebApplicationFactory<Program>, IDisposable
@@ -51,12 +52,108 @@ public class DeckApiTests : IClassFixture<DeckApiTests.Fixture>
         return JsonDocument.Parse(backJson).RootElement.GetProperty("data");
     }
 
+    // load/index splices user_card_list + user_sleeve_list into the stub via string concat, so this
+    // also proves the assembled blob stays valid JSON (Call would throw on a parse failure).
+    [Fact]
+    public async Task LoadIndexGrantsSleevesAndAlt()
+    {
+        var data = await Call("/shadowverse/load/index", new { });
+
+        var sleeves = data.GetProperty("user_sleeve_list");
+        Assert.True(sleeves.GetArrayLength() > 100);
+        Assert.True(sleeves[0].TryGetProperty("sleeve_id", out _));
+
+        var ids = new HashSet<long>();
+        foreach (var c in data.GetProperty("user_card_list").EnumerateArray())
+            ids.Add(c.GetProperty("card_id").GetInt64());
+        Assert.Contains(705114010L, ids);        // alt illustration of 100114010
+        Assert.DoesNotContain(1001140100L, ids); // no foil ids: premium is off by default
+    }
+
+    [Fact]
+    public void IntroduceDeckInfoServesRealDecks()
+    {
+        var dbp = Path.Combine(Path.GetTempPath(), $"ov-intro-{Guid.NewGuid():N}.db");
+        try
+        {
+            var store = new DeckStore(dbp);
+            List<OpenVerse.Api.IntroDeck> d =
+                [new("Fairy Forestcraft", 3, 1, [.. Enumerable.Repeat(100311010, 40)], 100311010, "せせらぎ", "Cup Champion")];
+            OpenVerse.Api.IntroSeries[] series = [new(1, "Tempest–Dawnbreak", d), new(2, "Wonderland–Brigade", d)];
+            var handler = new OpenVerse.Api.DeckHandler(store, null, series);
+            using var doc = JsonDocument.Parse(handler.IntroduceDeckInfo("""{"series_id":1}"""));
+            var root = doc.RootElement;
+            Assert.Equal(1, root.GetProperty("series_id").GetInt32());
+            Assert.Equal(2, root.GetProperty("series_list").GetArrayLength());  // both periods listed
+            var decks = root.GetProperty("display_deck_list");
+            Assert.Equal(1, decks.GetArrayLength());
+            Assert.Equal("Fairy Forestcraft", decks[0].GetProperty("deck_name").GetString());
+            Assert.Equal(3, decks[0].GetProperty("class_id").GetInt32());
+            Assert.Equal(40, decks[0].GetProperty("card_id_array").GetArrayLength());
+            Assert.Equal("せせらぎ", decks[0].GetProperty("player_name").GetString());
+            Assert.Equal("Cup Champion", decks[0].GetProperty("introduction").GetString());
+            Assert.Equal(100311010, decks[0].GetProperty("thumbnail_card_id").GetInt32());
+        }
+        finally { SqliteConnection.ClearAllPools(); try { File.Delete(dbp); } catch { } }
+    }
+
+    [Fact]
+    public void LoadIndexUpgradesSeededStarterDecks()
+    {
+        var dbp = Path.Combine(Path.GetTempPath(), $"ov-mig-{Guid.NewGuid():N}.db");
+        try
+        {
+            var store = new DeckStore(dbp);
+            int[] official = [100411010, 100411010, 100411020];
+            // an old seeded starter (named スターター) and a deck the user made themselves
+            store.Save(new Deck { UserKey = "u", DeckNo = 1, Format = 1, ClassId = 4, DeckName = "スターター", CardIdArray = [1, 2, 3] });
+            store.Save(new Deck { UserKey = "u", DeckNo = 2, Format = 1, ClassId = 4, DeckName = "mine", CardIdArray = [7, 8] });
+            List<OpenVerse.Common.DefaultDeckBuilder.DefaultDeck> starters = [new(4, official)];
+            var handler = new OpenVerse.Api.DeckHandler(store, starters);
+
+            handler.BuildLoadIndexDeckGroups("u");
+
+            Assert.Equal(official, store.Get("u", 1)!.CardIdArray);  // starter upgraded to official cards
+            Assert.Equal([7, 8], store.Get("u", 2)!.CardIdArray);    // user's own deck left alone
+        }
+        finally { SqliteConnection.ClearAllPools(); try { File.Delete(dbp); } catch { } }
+    }
+
+    [Fact]
+    public void PracticeEndpointsServeRosterDecksAndResult()
+    {
+        var dbp = Path.Combine(Path.GetTempPath(), $"ov-prac-{Guid.NewGuid():N}.db");
+        try
+        {
+            var store = new DeckStore(dbp);
+            var deck = new OpenVerse.Api.DeckHandler(store);
+            var roster = """[{"practice_id":1,"class_id":1,"ai_deck_level":106,"ai_logic_level":2,"ai_max_life":20}]""";
+            var h = new OpenVerse.Api.PracticeHandler(roster, deck);
+
+            using var info = JsonDocument.Parse(h.Handle("practice/info", "u"));   // roster array as-is
+            Assert.Equal(106, info.RootElement[0].GetProperty("ai_deck_level").GetInt32());
+
+            using var dl = JsonDocument.Parse(h.Handle("practice/deck_list", "u")); // deck groups + maintenance
+            Assert.True(dl.RootElement.TryGetProperty("user_deck_rotation", out _));
+            Assert.True(dl.RootElement.TryGetProperty("maintenance_card_list", out _));
+
+            Assert.Equal("{}", h.Handle("practice/start", "u"));
+            using var fin = JsonDocument.Parse(h.Handle("practice/finish", "u"));    // result shape the client reads
+            Assert.True(fin.RootElement.TryGetProperty("reward_list", out _));
+            Assert.True(fin.RootElement.TryGetProperty("class_level", out _));
+        }
+        finally { SqliteConnection.ClearAllPools(); try { File.Delete(dbp); } catch { } }
+    }
+
     [Fact]
     public async Task InfoOnEmptyReturnsGroups()
     {
         var data = await Call("/shadowverse/deck/info", new { deck_format = 0 });
-        Assert.Equal(0, data.GetProperty("user_deck_rotation").GetArrayLength());
-        Assert.Equal(0, data.GetProperty("user_deck_unlimited").GetArrayLength());
+        // each group carries the trailing empty "create new" slot even with no stored decks
+        var rot = data.GetProperty("user_deck_rotation");
+        Assert.Equal(1, rot.GetArrayLength());
+        Assert.Equal(1, data.GetProperty("user_deck_unlimited").GetArrayLength());
+        Assert.Empty(rot[0].GetProperty("card_id_array").EnumerateArray());
     }
 
     [Fact]
@@ -85,7 +182,7 @@ public class DeckApiTests : IClassFixture<DeckApiTests.Fixture>
         });
         var data = await Call("/shadowverse/deck/info", new { deck_format = 1 });
         var list = data.GetProperty("user_deck_list");
-        Assert.Equal(1, list.GetArrayLength());
+        Assert.Equal(2, list.GetArrayLength());   // saved deck + trailing create-new slot
         Assert.Equal("dragon", list[0].GetProperty("deck_name").GetString());
         Assert.Equal(4, list[0].GetProperty("class_id").GetInt32());
         Assert.Equal(3, list[0].GetProperty("card_id_array").GetArrayLength());
@@ -125,7 +222,8 @@ public class DeckApiTests : IClassFixture<DeckApiTests.Fixture>
             rotation_id = "",
         });
         var after = await Call("/shadowverse/deck/info", new { deck_format = 1 });
-        Assert.Equal(0, after.GetProperty("user_deck_list").GetArrayLength());
+        // only the trailing create-new slot is left
+        Assert.Equal(1, after.GetProperty("user_deck_list").GetArrayLength());
     }
 
     [Fact]

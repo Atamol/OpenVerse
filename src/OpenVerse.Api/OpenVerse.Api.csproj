@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <None Include="stubs\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="data\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="certs\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>
