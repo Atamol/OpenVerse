@@ -1,4 +1,4 @@
-### 🇯🇵 [日本語版](../protocol.md)
+### ![ja](https://flagcdn.com/20x15/jp.png) [日本語版](../protocol.md)
 
 # OpenVerse protocol
 
