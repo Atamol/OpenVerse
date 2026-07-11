@@ -1,3 +1,5 @@
+### [日本語版](../server-design.md)
+
 # OpenVerse server design
 
 ## Layout

@@ -1,3 +1,5 @@
+### [English Here](en/roadmap.md)
+
 # OpenVerse計画および進捗
 
 現在地: Phase 4 (ルームマッチ)．ソリティア (対CP) まで実機で動作．

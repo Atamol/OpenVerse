@@ -1,3 +1,5 @@
+### [日本語版](../protocol.md)
+
 # OpenVerse protocol
 
 ## Client

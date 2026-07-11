@@ -1,3 +1,5 @@
+### [English Here](en/server-design.md)
+
 # OpenVerseサーバー設計
 
 ## 構成

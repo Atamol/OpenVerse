@@ -1,3 +1,5 @@
+### [日本語版](../roadmap.md)
+
 # OpenVerse roadmap and progress
 
 Current position: Phase 4 (room match). Solitaire content (vs CP) works on a real client.
