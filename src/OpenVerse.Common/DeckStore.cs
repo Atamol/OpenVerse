@@ -75,13 +75,15 @@ public sealed class DeckStore
         return r.Read() ? Read(r) : null;
     }
 
+    // deck_no is the (user_key, deck_no) primary key, so it must be unique per user across
+    // all formats — scoping MAX to a format collides format 1 and 2 at deck_no 1 and the
+    // second save overwrites the first.
     public int NextDeckNo(string userKey, int format)
     {
         using var c = Open();
         using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT COALESCE(MAX(deck_no), 0) + 1 FROM decks WHERE user_key = $u AND format = $f";
+        cmd.CommandText = "SELECT COALESCE(MAX(deck_no), 0) + 1 FROM decks WHERE user_key = $u";
         cmd.Parameters.AddWithValue("$u", userKey);
-        cmd.Parameters.AddWithValue("$f", format);
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
