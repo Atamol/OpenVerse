@@ -59,7 +59,13 @@ Windows，Linuxで動作します．
 
 ## 起動
 
-準備中．
+Steam版クライアントを持っていること (サービス終了前にプレイしたことがあり，card_masterが手元にあること) が前提で，Windows向けです．
+
+1. リリースを解凍する
+2. `openverse-setup.exe` を実行 (初回のみ)．自分のクライアントからcard_masterを取り出す．OpenVerseに接続する前に行う
+3. `openverse-launcher.exe` を実行 (毎回)．管理者許可のあと，hostsと証明書を設定してサーバーを立て，シャドバを起動する (ゲームを閉じるとhostsは元に戻る)
+
+card_master等のゲームデータは同梱していないので，2で各自のクライアントから用意します．自分でビルドするなら `build-release.ps1` で `release/` に一式が出ます．
 
 ## 法的事項
 

@@ -59,7 +59,13 @@ Runs on Windows and Linux.
 
 ## Running
 
-Not yet.
+For owners of the Steam client, on Windows. You need card_master from your own client (played before the end of service).
+
+1. Unzip the release
+2. Run `openverse-setup.exe` once. It pulls card_master from your own client. Do this before connecting to OpenVerse
+3. Run `openverse-launcher.exe` each time. After the admin prompt it sets up hosts and the cert, starts the server, and launches Shadowverse (closing the game restores hosts)
+
+Game data (card_master etc.) is not bundled, so step 2 produces it from your client. To build it yourself, run `build-release.ps1` for a full `release/`.
 
 ## Legal
 
