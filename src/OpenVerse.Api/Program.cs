@@ -5,19 +5,17 @@ using OpenVerse.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Real launch sets OPENVERSE_LISTEN=1 to bind 80 + 443. Tests leave it unset so WebApplicationFactory keeps its TestServer.
+// tests leave OPENVERSE_LISTEN unset so WebApplicationFactory keeps its TestServer (real launch binds 80 + 443)
 if (Environment.GetEnvironmentVariable("OPENVERSE_LISTEN") == "1")
 {
     var certPath = Environment.GetEnvironmentVariable("OPENVERSE_CERT")
         ?? Path.Combine(AppContext.BaseDirectory, "certs", "openverse.pfx");
     var certPassword = Environment.GetEnvironmentVariable("OPENVERSE_CERT_PW") ?? "openverse";
+    CertGen.EnsureSelfSigned(certPath, certPassword).Dispose();
     builder.WebHost.ConfigureKestrel(options =>
     {
         options.ListenAnyIP(80);
-        if (File.Exists(certPath))
-            options.ListenAnyIP(443, lo => lo.UseHttps(certPath, certPassword));
-        else
-            Console.WriteLine($"cert not found at {certPath}, HTTPS disabled");
+        options.ListenAnyIP(443, lo => lo.UseHttps(certPath, certPassword));
     });
 }
 
@@ -37,8 +35,6 @@ var dbPath = Environment.GetEnvironmentVariable("OPENVERSE_DECK_DB")
     ?? Path.Combine(AppContext.BaseDirectory, "openverse.db");
 var deckStore = new DeckStore(dbPath);
 List<DefaultDeckBuilder.DefaultDeck> defaultDecks = [];
-// Official per-class starter decks extracted from the reference server's default_deck_list (all basic-set,
-// 40 cards). Falls back to a generated deck if the file is missing.
 var starterSrc = Path.Combine(AppContext.BaseDirectory, "data", "starter_decks.json");
 if (File.Exists(starterSrc))
 {
@@ -58,7 +54,6 @@ else
         Console.WriteLine($"DefaultDecks: built {defaultDecks.Count} starter decks (generated fallback)");
     }
 }
-// 大会上位デッキ紹介 decks (data/deck_intro.json), grouped by expansion period
 List<IntroSeries> introSeries = [];
 var introPath = Path.Combine(AppContext.BaseDirectory, "data", "deck_intro.json");
 if (File.Exists(introPath))
@@ -82,7 +77,6 @@ if (File.Exists(introPath))
 }
 var deckHandler = new DeckHandler(deckStore, defaultDecks, introSeries);
 
-// Practice (CP対戦) opponent roster from the reference server
 var practicePath = Path.Combine(AppContext.BaseDirectory, "data", "practice_info.json");
 var practiceRoster = File.Exists(practicePath) ? File.ReadAllText(practicePath).Trim() : "[]";
 var practiceHandler = new PracticeHandler(practiceRoster, deckHandler);
@@ -117,7 +111,7 @@ Dictionary<int, string[]> LoadTextIds(string p)
     }
     return d;
 }
-// voice_cues.tsv: "<id>\t<cue1>,<cue2>,..." used only by the CardMasterBuilder fallback
+// voice_cues.tsv: "<id>\t<cue1>,<cue2>,..."
 Dictionary<int, string> LoadVoiceCues(string p)
 {
     var d = new Dictionary<int, string>();
@@ -138,12 +132,11 @@ var tnKeysPath = Path.Combine(dataDir, "tn_keys.txt");
 var tnKeys = File.Exists(tnKeysPath)
     ? File.ReadLines(tnKeysPath).Select(l => l.Trim()).Where(l => l.Length > 0).ToHashSet()
     : new HashSet<string>();
-// Premium (foil) is off by default: it does not render foil shimmer on the pristine client, breaks
-// related-card navigation, and its interleaved rows disturb the collection sort order. Opt in with
-// OPENVERSE_PREMIUM=1 once a real foil pipeline exists.
+// premium (foil) off by default: no shimmer on the pristine client, breaks related-card nav, and its
+// interleaved rows disturb the collection sort. OPENVERSE_PREMIUM=1 to opt in
 var premiumEnabled = Environment.GetEnvironmentVariable("OPENVERSE_PREMIUM") == "1";
-// The real card_master (all cards incl. sets 130-132, authentic voice cues) from the reference dump.
-// Preferred over the shadowverse_ja.json reconstruction, which stopped at set 129 and mis-mapped voices.
+// The full card_master (all cards incl. sets 130-132, authentic voice cues)
+// preferred over the shadowverse_ja.json reconstruction, which stopped at set 129 and mis-mapped voices
 var realMasterGz = Path.Combine(dataDir, "card_master_full.csv.gz");
 string cardCsv;
 if (File.Exists(realMasterGz))
@@ -230,8 +223,7 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         return;
     }
 
-    // deck_code goes to the portal (dead backend), unencrypted msgpack, self-hosted here: the body is
-    // raw msgpack, the reply is base64(msgpack) of the usual { data_headers, data } envelope.
+    // deck_code (dead portal backend), self-hosted: request is raw msgpack, reply is base64(msgpack) of { data_headers, data }
     if (DeckCodeHandler.CanHandle(path))
     {
         string reqMp;
@@ -266,8 +258,7 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
             raw = raw.Replace("\"user_sleeve_list\": []", "\"user_sleeve_list\": " + sleeveListJson);
             var deckGroups = deckHandler.BuildLoadIndexDeckGroups(userKey);
             var deckGroupsInner = deckGroups.Substring(1, deckGroups.Length - 2);
-            // open_battle_field_id_list: unlocked battle backgrounds. Without it LoadDetail leaves
-            // OpenBattleFieldIdList null and the battle scene NREs in CalculationRandomStage at start.
+            // open_battle_field_id_list: without it the battle scene NREs in CalculationRandomStage at start
             const string battleFields = "[1,2,3,4,5,6,7,10,18,30,31,41,43,51,61,71]";
             data = raw.TrimEnd().EndsWith("}")
                 ? raw.TrimEnd().TrimEnd('}') + $",\"card_master_hash\":\"{cardMasterHash}\",\"user_card_list\":{userCardListJson},\"open_battle_field_id_list\":{battleFields},{deckGroupsInner}}}"
