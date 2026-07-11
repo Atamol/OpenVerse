@@ -1,4 +1,4 @@
-### [日本語版](../protocol.md)
+### 🇯🇵 [日本語版](../protocol.md)
 
 # OpenVerse protocol
 

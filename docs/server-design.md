@@ -1,4 +1,4 @@
-### [English Here](en/server-design.md)
+### ![en](https://flagcdn.com/20x15/gb.png) [English Here](en/server-design.md)
 
 # OpenVerseサーバー設計
 

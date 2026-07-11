@@ -1,4 +1,4 @@
-### [日本語版](../server-design.md)
+### 🇯🇵 [日本語版](../server-design.md)
 
 # OpenVerse server design
 

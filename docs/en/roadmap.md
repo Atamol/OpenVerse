@@ -1,4 +1,4 @@
-### [日本語版](../roadmap.md)
+### 🇯🇵 [日本語版](../roadmap.md)
 
 # OpenVerse roadmap and progress
 
