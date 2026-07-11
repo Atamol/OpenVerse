@@ -1,57 +1,48 @@
 # OpenVerse server design
 
-## Servers
+## Layout
 
-| Server | Language/tech | Role |
+| Server | Framework | Role |
 | --- | --- | --- |
-| API | C# (ASP.NET Core / Kestrel) | login, master data, decks, room management. HTTP + AES + MsgPack |
-| Battle | C# (custom Socket.IO) | real-time. server-authoritative operation list |
+| API | C# (ASP.NET Core / Kestrel) | login, master data, decks, room management |
+| Battle | C# (custom Socket.IO) | PvP real-time |
 | CDN | static server (nginx / caddy) | asset delivery |
-| DB | SQLite, PostgreSQL if needed | decks, owned cards, sessions |
+| DB | SQLite (PostgreSQL if needed) | decks, owned cards, sessions |
 
-- API and battle can share one process or split later. They share a common library (crypto / types / MsgPack / DB)
-- The main hurdle is the custom Socket.IO framing, matching BestHTTP's actual frames 1:1 (polling `[type][length][0xFF]`, websocket upgrade, `{_placeholder,num}` plus a leading `0x04` raw binary attachment, ping fixed at 2000/5000ms)
+- API and battle can share one process or split later (they share a common library)
+- A battle server is only needed for PvP. Solitaire (CP battle, story, quest) runs entirely client-side, engine and AI included
+
+## API handlers
+
+`Program.cs` dispatches to each handler.
+
+- `card_master`: serves every card as owned
+- `DeckHandler`: deck editing, deck introduction, starters
+- `PracticeHandler`: CP battle setup and result recording
+- `RoomHandler`: room management (Phase 4)
+- `DeckCodeHandler`: self-hosted deck codes
+- load/index etc. are stubs with dynamic splices (owned cards, sleeves, background ids)
+
+Card names/effects live in the client's SystemText, so card_master only returns text ids.
 
 ## Language
 
-The client supports 9 languages (Jpn, Eng, Kor, Chs, Cht, Fre, Ita, Ger, Spa). OpenVerse handles just Jpn and Eng.
+Jpn and Eng, switched by the HTTP `LANGUAGE` header.
 
-- Determined by the HTTP `LANGUAGE` header. Unsupported values fall back to Jpn
-- The `LOCALE` header is hard-coded to `"Jpn"` client-side and can be ignored. `REGION_CODE` is the Steam store country and unrelated to display language, also ignored
-- CDN paths carry a language token (for example `/dl/Manifest/<Ver>/Jpn/Windows/manifest_assetmanifest`), so pull it out of the URL and serve `stubs/<lang>/manifest/<name>`
-- Text language and sound/movie language are independent, but OpenVerse does not handle sound so only `LANGUAGE` (text) is read
-
-### What needs localization
-
-The client's `SystemText` (a local JSON dictionary) covers error messages, maintenance banners, and most card name/effect text. The server just returns IDs.
-
-Server-side text is only needed for:
-
-- Mail `message`
-- Mission / Achievement `name`
-- Login bonus campaign `name`
-- Vote family (`vote_name`, `title_text`, `tweet_text`)
-- Quest / event band label `name`
-- Boss rush `name` / `skill_text`
-
-None of these touch room match or deck editing. They land in Phase 5 (mail / announcements) via an i18n table (`table_i18n(id, lang, ...)`).
-
-### Cost
-
-Code side is around 20 lines (read header, extract the language token from the path, switch stub folder).
-
-The real work is getting EN assets (`master_cardnametextmaster.unity3d` and friends). The official CDN is dead, so the source is an EN player's local cache (`AppData/LocalLow/Cygames/Shadowverse/a/`).
+- Most text lives in the client's SystemText, so the server just returns ids
+- `LOCALE`/`REGION_CODE` are unrelated to display language and can be ignored
+- The CDN reads the language token in the path and serves `stubs/<lang>/`
+- The server only holds per-language text for a few things (mail, missions, votes, etc.), in Phase 5 via an i18n table
 
 ## Network
 
-Whoever runs the server picks the reach method, pointing `utoongaize.shadowverse.jp` at the server via hosts on each machine.
+Point `utoongaize.shadowverse.jp` at the server via hosts on each machine. Whoever hosts picks the method:
 
-- VPN (no port forwarding, well-suited for casual private matches)
+- VPN (no port forwarding, good for private groups)
 - Fixed host (needs port forwarding or DDNS)
-- The client forces HTTPS, so either patch it to http (`SetScemeMode(Https) -> Http`) or set up a local CA (mkcert). For a private group, a patched client plus one hosts line is enough
+- The client forces HTTPS, so use an http patch or a local CA (mkcert)
 
 ## Docker
 
-- Direct `dotnet run` at first (no Docker needed if the DB is SQLite)
-  - Compose just the DB when moving to Postgres
-- Dockerize the whole thing once always-on hosting or distribution becomes necessary
+- Direct `dotnet run` at first (no Docker needed with SQLite)
+- Dockerize the whole thing once distribution or always-on hosting is needed
