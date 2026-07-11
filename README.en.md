@@ -1,4 +1,4 @@
-![](https://progress-bar.xyz/14?width=100&title=Propgress:)
+![](https://progress-bar.xyz/82?width=100&title=Propgress:)
 
 ### [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/VMjWKegucJ)
 
@@ -6,8 +6,8 @@
 
 # OpenVerse
 
-An emulation server project for the original Shadowverse (Steam version), whose service ended on 2026-07-01 11:00.
-The goal is to keep deck editing and room matches playable after shutdown.
+An emulation server project for Shadowverse (Steam version), whose service ended 2026-07-01 11:00.
+It keeps deck editing, CP battles, and room matches playable after shutdown.
 
 Language: English (this file). The source is Japanese: see [`README.md`](README.md).
 
@@ -16,36 +16,38 @@ Language: English (this file). The source is Japanese: see [`README.md`](README.
 Run your own server and get:
 - Deck editing
 - All cards free
+- CP battles
 - Room match
 
-Out of scope for now, mostly for cost reasons:
+Out of scope for now:
+- Puzzle
 - Ranked
 - Gacha
 - Payments
 
 ## Progress
 
-Early development. Phase-by-phase breakdown in the [roadmap](docs/en/roadmap.md).
+Room match is in progress. Phase-by-phase breakdown in the [roadmap](docs/en/roadmap.md).
 
-![](https://progress-bar.xyz/14?width=500&title=Propgress:)
+![](https://progress-bar.xyz/82?width=500&title=Propgress:)
 
 - [x] Project design
 - [x] Client analysis (crypto, wire format, endpoints)
-- [ ] Real client past the title screen
-- [ ] Home (custom UI)
-- [ ] Deck editing
+- [x] Home and other UI
+- [x] All cards, voices, sleeves unlocked
+- [x] Deck editing
+- [x] vs CP
 - [ ] Room match
-- [ ] Battle
 
 ## How it works
 
-OpenVerse stands in for the servers the Steam client used to talk to over HTTP and Socket.IO:
-- API server (HTTP): login, master data, decks, room matching
+OpenVerse stands in for the servers the Steam client talked to over HTTP and Socket.IO:
+- API server (HTTP): login, master data, deck info, room match
 - Battle server (Socket.IO): online battle
 - Static server: game assets
 
-Request and response bodies are JSON, packed with MessagePack and encrypted with AES. Full details in [protocol.md](docs/en/protocol.md).
-Point the client at your server by rewriting the host in `hosts`, then either patch the client to use http or install a local certificate.
+Request and response bodies are JSON wrapped with MessagePack and encrypted with AES. Details in [protocol.md](docs/en/protocol.md).
+Point the client at your own server by rewriting the host in `hosts`, then use an http patch or a local certificate.
 
 ## Architecture
 
