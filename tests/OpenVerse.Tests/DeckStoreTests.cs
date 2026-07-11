@@ -3,6 +3,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
+[Collection("Sqlite")]
 public class DeckStoreTests : IDisposable
 {
     readonly string _dbPath;
