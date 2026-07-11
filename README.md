@@ -6,8 +6,8 @@
 
 # OpenVerse
 
-2026年7月1日 (水) 11:00にサービスが終了した，Shadowverse (Steam版) のエミュレーションサーバーのプロジェクト．  
-サービスが終了した後もデッキ編成，およびCPとの対戦やルームマッチのプレイを可能にするものです．
+2026年7月1日 (水) 11:00にサービスが終了した，Shadowverse (Steam版) のエミュレーションサーバープロジェクト．  
+サービスが終了した後もデッキ編成，CPとの対戦，ルームマッチのプレイを可能にします．
 
 ## できること
 
@@ -61,11 +61,12 @@ Windows，Linuxで動作します．
 
 Steam版クライアントを持っていること (サービス終了前にプレイしたことがあり，card_masterが手元にあること) が前提で，Windows向けです．
 
-1. リリースを解凍する
-2. `openverse-setup.exe` を実行 (初回のみ)．自分のクライアントからcard_masterを取り出す．OpenVerseに接続する前に行う
-3. `openverse-launcher.exe` を実行 (毎回)．管理者許可のあと，hostsと証明書を設定してサーバーを立て，シャドバを起動する (ゲームを閉じるとhostsは元に戻る)
+1. [Releases](https://github.com/Atamol/OpenVerse/releases)から`openverse-setup.exe`，`openverse-launcher.exe`をダウンロードする
+2. `openverse-setup.exe`を実行し，OpenVerseに接続する前にセットアップを行う (初回のみ)
+3. `openverse-launcher.exe`を実行し，管理者権限を許可してサーバーを立ち上げる (毎回)
+4. Steamからシャドバを起動する (ゲームを閉じるとhostsは元に戻る)
 
-card_master等のゲームデータは同梱していないので，2で各自のクライアントから用意します．自分でビルドするなら `build-release.ps1` で `release/` に一式が出ます．
+ゲームデータは同梱していないため，2で各自のクライアントから用意する仕組みです．自分でビルドする場合は，`build-release.ps1`で`release/`に一式を出力できます．
 
 ## 法的事項
 
