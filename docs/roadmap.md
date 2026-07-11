@@ -1,70 +1,68 @@
-# OpenVerse 計画および進捗
+# OpenVerse計画および進捗
 
-現在地: Phase 1
+現在地: Phase 4 (ルームマッチ)．ソリティア (対CP) まで実機で動作．
 
 ## Phase 0: クライアント解析 (完了)
 
 ![](https://progress-bar.xyz/100?width=500&title=Propgress:)
 
-- [x] Assembly-CSharpの逆コンパイル (Unity 2020.3 Mono，名前空間Wizard)
-- [x] サーバー構成とドメイン (API/CDN/Node/DeckBuilder)
-- [x] 暗号CryptAES (AES-256-CBC，API系とNode系)
-- [x] シリアライズ (JSON -> MessagePack -> AES)
-- [x] 認証 (Steam ticket + viewer_id) とエンドポイント一覧
-- [x] Socket.IOのバージョン (URLはEIO=4だがv3 framing + v2バイナリの非標準混在)
-- [x] APIボディの包み方 (`_createBodyMsgpack`: JSON -> MsgPack -> AES)
+- [x] Assembly-CSharpの逆コンパイル
+- [x] サーバー構成とドメインの特定
+- [x] 暗号と通信フォーマットの解析
+- [x] 認証とエンドポイント一覧
+- [x] Socket.IOのフレーミング
 
-詳細は[protocol.md](protocol.md)にあります．
+詳細は[protocol.md](protocol.md)．
 
-## Phase 1: 通信の土台と初回接続 (完了)
+## Phase 1: 通信の土台 (完了)
 
 ![](https://progress-bar.xyz/100?width=500&title=Propgress:)
 
-- [x] 骨組み (Common / Api / Battle)
-- [x] 暗号ライブラリ`WireCrypto` (AES 2系統)
-- [x] MessagePack統合
-- [x] 通信コーデック`WireCodec` (リクエスト復号，レスポンス暗号化)
-- [x] 受信機 (ヘッダとボディをログ，リクエストをJSONに復号，タイトルチェックにスタブ応答)
-- [x] リダイレクト (hosts + http化パッチ) で実クライアントを受信機に流す
-- [x] 実トラフィックで暗号とヘッダを確かめる
-- [x] 起動チェックに応答してタイトルを抜ける
+- [x] プロジェクト骨組み
+- [x] 暗号と通信コーデック
+- [x] リダイレクト (hosts + 自己署名HTTPS)
+- [x] タイトル通過
 
-## Phase 2: マスタデータと画面到達
+## Phase 2: マスタデータと画面到達 (完了)
 
-![](https://progress-bar.xyz/0?width=500&title=Propgress:)
+![](https://progress-bar.xyz/100?width=500&title=Propgress:)
 
-- [ ] マスタデータ配信 (全カード所持で返す)
-- [ ] ホーム画面または自作UIに到達
+- [x] ホーム画面
+- [x] card_masterの配信 (全カード解放)
+- [x] ボイスの実装
+- [x] 全スリーブ・特別イラストの解放
 
-## Phase 3: デッキ編成
+## Phase 3: デッキ編成 (完了)
 
-![](https://progress-bar.xyz/0?width=500&title=Propgress:)
+![](https://progress-bar.xyz/100?width=500&title=Propgress:)
 
-- [ ] デッキCRUD API (`deck/info`, `deck/create`, `deck/edit`, `deck/delete`)
-- [ ] 全フォーマット対応
-- [ ] 制限カードの適用
-- [ ] 編集画面 (純正？)
+- [x] 全フォーマット対応
+- [x] スターターデッキ
+- [x] 大会上位デッキ紹介
+- [x] デッキ編成
+- [x] デッキコードのホスト
 
-## Phase 4: ルームマッチ
+## Phase 3.5: ソリティアコンテンツ (完了)
 
-![](https://progress-bar.xyz/0?width=500&title=Propgress:)
+![](https://progress-bar.xyz/100?width=500&title=Propgress:)
 
-- [ ] 本編APIとルームのシーケンス解析 (`Wizard.RoomMatch`)
+- [x] CP対戦
+
+## Phase 4: ルームマッチ (PvP)
+
+![](https://progress-bar.xyz/15?width=500&title=Propgress:)
+
+- [x] ルームのシーケンス解析
 - [ ] ルームの作成と参加
-- [ ] マッチ応答で`node_server_url`を返してバトルサーバーへ誘導
+- [ ] バトルサーバーへの誘導
+- [ ] Socket.IOフレーミング実装
+- [ ] operationプロトコル解析
+- [ ] バトルエンジン
 
-## Phase 5: バトル
-
-![](https://progress-bar.xyz/0?width=500&title=Propgress:)
-
-- [ ] 自前のSocket.IOフレーミング (v3 payload + v2バイナリ添付)
-- [ ] operationプロトコル解析 (サーバー権威か，カード効果の所在)
-- [ ] バトルエンジン (ターン進行，進化，カード効果．shadow_sim参考)
-
-## Phase 6: 配布と運用
+## Phase 5: 配布と運用
 
 ![](https://progress-bar.xyz/0?width=500&title=Propgress:)
 
-- [ ] Docker化 (検討中)
+- [ ] Docker化
 - [ ] 接続手順のドキュメント
-- [ ] 通し確認
+- [ ] 身内での通し確認
