@@ -178,8 +178,8 @@ URLクエリではなくHTTPヘッダに載ります．
 ### 接続後のシーケンス
 
 1. Client→`InitNetwork` (cat:99) → Server→`InitNetwork` echo (payloadは任意で`_initNetworkSuccess`が立てば通る)
-2. Client→`RoomCreate` (owner) or `RoomEntry` (visitor) (cat:3) → Server ACKに`resultCode:0`
-3. Server→`Matched`: `{uri, bid, turnState:0|1, selfInfo, oppoInfo, selfDeck:[{idx,cardId}...], playSeq:1}`
+2. Client→`RoomCreate` (owner) or `RoomEntry` (visitor) (cat:3) → Server ACKに`resultCode:1` (`ReceiveNodeResultCode.Success`)
+3. 両者がデッキ選択と`RoomReady`を終えるとServer→`Matched`: `{uri, bid, turnState:0|1, selfInfo, oppoInfo, selfDeck:[{idx,cardId}...], playSeq:1}`
 4. Both→`Loaded` (cat:1, pubSeq:2) → Server→`BattleStart` (playSeq:2): `{uri, battleStartDate:<unix-microseconds>, selfInfo, oppoInfo}`
 5. Server→`Deal` (playSeq:3): `{uri, cards:[{idx,cardId,isSelf,RedrawCardPosition}...]}` → Client→`Swap` → Server→`Ready`
 

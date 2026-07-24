@@ -2,7 +2,7 @@
 
 # OpenVerse roadmap and progress
 
-Current position: Phase 4 (room match). Solitaire content (vs CP) works on a real client.
+Current position: Phase 4 (room match). PvP runs end to end between two clients, sync bugs still being fixed.
 
 ## Phase 0: Client analysis (done)
 
@@ -52,19 +52,22 @@ Details in [protocol.md](protocol.md).
 
 ## Phase 4: Room match (PvP)
 
-![](https://progress-bar.xyz/15?width=500&title=Propgress:)
+![](https://progress-bar.xyz/70?width=500&title=Propgress:)
 
 - [x] Room sequence analysis
-- [ ] Create and join a room
-- [ ] Steer to the battle server
-- [ ] Socket.IO framing
-- [ ] Operation protocol analysis
-- [ ] Battle engine
+- [x] Create and join a room
+- [x] Steer to the battle server
+- [x] Socket.IO framing
+- [x] Operation protocol analysis
+- [x] Relay battles between two clients (known sync bugs: spellboost, extra turns, PP)
+- [x] Run the client's battle engine headless as an observer
+- [ ] Engine adjudication (fill cost/condition blanks)
 
 ## Phase 5: Distribution and ops
 
-![](https://progress-bar.xyz/0?width=500&title=Propgress:)
+![](https://progress-bar.xyz/40?width=500&title=Propgress:)
 
-- [ ] Dockerize
+- [x] Launcher and setup (two exes for self-hosting)
+- [x] Release package build
 - [ ] Connection docs
-- [ ] Full run-through with friends
+- [ ] Full run-through

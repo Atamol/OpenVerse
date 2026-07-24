@@ -42,9 +42,14 @@ Point `utoongaize.shadowverse.jp` at the server via hosts on each machine. Whoev
 
 - VPN (no port forwarding, good for private groups)
 - Fixed host (needs port forwarding or DDNS)
-- The client forces HTTPS, so use an http patch or a local CA (mkcert)
+- The endpoint is HTTPS, but the client does not validate the cert, so a self-signed one works as-is (no client patch or mkcert, the launcher generates it)
 
-## Docker
+## Battle engine
 
-- Direct `dotnet run` at first (no Docker needed with SQLite)
-- Dockerize the whole thing once distribution or always-on hosting is needed
+The PvP relay passes a client's messages straight to the peer, but the values the original server used to fill in (costs, condition answers) go missing. So the client's own battle engine runs headless alongside the match, replays the same game, and observes those missing values. It only observes for now. Switching it to adjudication is gated behind the `OPENVERSE_ENGINE_ROLE` env var and enabled in stages.
+
+## Distribution
+
+- Ship two exes, setup and launcher (setup needs no elevation, launcher runs as admin to rewrite hosts and start the server)
+- Self-hosting also works via `dotnet run` (SQLite, so no DB server)
+- Dockerize if always-on hosting is needed
