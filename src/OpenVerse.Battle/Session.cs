@@ -14,6 +14,16 @@ public sealed class Session
     public string ViewerId { get; }
     public int PingIntervalMs { get; init; } = 2000;
     public int PingTimeoutMs { get; init; } = 5000;
+    public bool Loaded { get; set; }
+    public bool MulliganDone { get; set; }
+    public bool Ready { get; set; }
+    public bool InitBattleSent { get; set; }
+    public bool BattleStartSent { get; set; }
+    public bool DealSent { get; set; }
+    // deck cards are Indexed 1..40 (client uses slot+1), so the opening hand is 1-3 and redraws pull slot 4 and up
+    public int NextDeckIdx { get; set; } = 4;
+    // mulligan redraws: hand position -> replacement deck slot
+    public Dictionary<int, int> Redraws { get; } = new();
 
     readonly WebSocket _ws;
     readonly Channel<Frame> _outgoing = Channel.CreateUnbounded<Frame>();
@@ -21,6 +31,7 @@ public sealed class Session
 
     public event Action<Session, SocketPacket, byte[][]>? OnEvent;
     public event Action<Session, string, JsonNode?, int?>? OnMsg;
+    public event Action<Session>? OnAliveEmit;
 
     readonly record struct Frame(WebSocketMessageType Type, byte[] Data);
 
@@ -100,6 +111,25 @@ public sealed class Session
     void Dispatch(SocketPacket sp, byte[][] binaries)
     {
         OnEvent?.Invoke(this, sp, binaries);
+        if (sp.EventName == "alive")
+        {
+            // client keeps a Gungnir heartbeat: ACK the emit, then let BattleHub push back an alive response
+            if (sp.AckId is int aliveAckId) _ = SendAck(aliveAckId, 0);
+            OnAliveEmit?.Invoke(this);
+            return;
+        }
+        if (sp.EventName == "hand")
+        {
+            // SELECT_SKILL/SLIDE_OBJECT stock into the SAME emit queue as PlayActions/TurnEnd and only advance on a
+            // matching-pubSeq ack; without it the first drag-attack/targeted-play/evolve blocks the queue forever.
+            // fire-and-forget hands (Touch/SelectObject/TurnEndReady) carry no AckId and need nothing.
+            if (sp.AckId is int handAckId && binaries.Length > 0)
+            {
+                try { _ = SendAck(handAckId, BattleCodec.DecodeHandPubSeq(binaries[0])); }
+                catch (Exception e) { Console.WriteLine($"[{Id}] hand decode failed: {e.Message}"); }
+            }
+            return;
+        }
         if (sp.EventName == "msg" && binaries.Length > 0)
         {
             try
@@ -135,12 +165,17 @@ public sealed class Session
         return _outgoing.Writer.WriteAsync(new Frame(WebSocketMessageType.Binary, data), ct).AsTask();
     }
 
-    public async Task SendMsg(string uri, object payload, CancellationToken ct = default)
+    public async Task SendMsg(string uri, object payload, bool withPlaySeq = true, CancellationToken ct = default)
     {
-        var seq = Interlocked.Increment(ref _playSeq);
-        var envelope = JsonNode.Parse(JsonSerializer.Serialize(payload)) as JsonObject ?? new JsonObject();
-        envelope["uri"] = uri;
-        envelope["playSeq"] = seq;
+        // "uri" must come before selfDeck: on Matched, the client's uri handler calls InitializeSelfInfo() which nulls _selfDeck.
+        // if "uri" is parsed after "selfDeck", StartBattleLoad hits null.Select and dies before stopping matchedStart.
+        var envelope = new JsonObject { ["uri"] = uri };
+        var body = JsonNode.Parse(JsonSerializer.Serialize(payload)) as JsonObject;
+        if (body is not null) foreach (var (k, v) in body) if (k != "uri") envelope[k] = v?.DeepClone();
+        // non-matching URIs (RoomCreate/RoomEntry/etc.) get stocked and never reach OnReceivedEvent when playSeq is set,
+        // because IsMatchingURI only bypasses stock for InitBattle/InitRoomBattle/Matched/InitNetwork
+        if (withPlaySeq) envelope["playSeq"] = Interlocked.Increment(ref _playSeq);
+        Console.WriteLine($"[{Id}] send {uri}: {envelope.ToJsonString()}");
         var chunk = BattleCodec.EncodeMsg(envelope.ToJsonString());
         var packet = new SocketPacket
         {
@@ -162,5 +197,29 @@ public sealed class Session
     {
         var packet = SocketPacket.Ack(ackId, [pubSeq, result]);
         return SendText("4" + packet.Serialize(), ct);
+    }
+
+    // Gungnir alive: server pushes an "alive" event back so the client's OnAlived -> ReceiveGungnir marks self/opponent online.
+    // scs = self connection status, ocs = opponent connection status (ONLINE/WAITING/OFFLINE/TIMEOUT).
+    // ocs=OFFLINE is what fires the peer's OppoDisconnectVictory, so only send it on an observed socket close.
+    public async Task SendAlive(bool peerOnline, bool peerGone = false, CancellationToken ct = default)
+    {
+        var envelope = new JsonObject
+        {
+            ["uri"] = "Gungnir",
+            // scs must stay ONLINE: the client reads scs first and an OFFLINE there means "I am disconnected",
+            // returning before it ever looks at ocs
+            ["scs"] = "ONLINE",
+            ["ocs"] = peerGone ? "OFFLINE" : peerOnline ? "ONLINE" : "WAITING",
+        };
+        var chunk = BattleCodec.EncodeMsg(envelope.ToJsonString());
+        var packet = new SocketPacket
+        {
+            Type = SocketType.BinaryEvent,
+            Attachments = 1,
+            Payload = "[\"alive\",{\"_placeholder\":true,\"num\":0}]",
+        };
+        await SendText("4" + packet.Serialize(), ct);
+        await SendBinary(chunk, ct);
     }
 }

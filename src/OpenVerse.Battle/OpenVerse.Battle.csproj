@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpenVerse.Common\OpenVerse.Common.csproj" />
+    <ProjectReference Include="..\OpenVerse.Engine\OpenVerse.Engine.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -9,5 +10,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <Import Project="..\EngineHost.targets" />
 
 </Project>

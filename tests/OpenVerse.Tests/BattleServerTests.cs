@@ -124,41 +124,40 @@ public class BattleServerTests : IClassFixture<WebApplicationFactory<BattleServe
         await SendText(ws, "451-5[\"msg\",{\"_placeholder\":true,\"num\":0}]");
         await SendBinary(ws, BattleCodec.EncodeMsg("{\"uri\":\"RoomCreate\",\"pubSeq\":1}"));
 
+        // ReceiveNodeResultCode.Success is 1, not 0
         var ack = await ReceiveText(ws);
-        Assert.Equal("435[1,{\"resultCode\":0}]", ack);
+        Assert.Equal("435[1,{\"resultCode\":1}]", ack);
     }
 
+    // RoomEntry no longer fires Matched (that waits for both decks + Ready). it acks, echoes to the sender, and tells the
+    // owner who joined
     [Fact]
-    public async Task RoomEntryTriggersMatchedOnBothPeers()
+    public async Task RoomEntryEchoesAndNotifiesOwner()
     {
         var (wsA, _, _) = await ConnectAsync("shared-b", "1001");
         var (wsB, _, _) = await ConnectAsync("shared-b", "1002");
 
         await SendText(wsA, "451-1[\"msg\",{\"_placeholder\":true,\"num\":0}]");
         await SendBinary(wsA, BattleCodec.EncodeMsg("{\"uri\":\"RoomCreate\",\"pubSeq\":1}"));
-        var ackA = await ReceiveText(wsA);
-        Assert.Equal("431[1,{\"resultCode\":0}]", ackA);
+        Assert.Equal("431[1,{\"resultCode\":1}]", await ReceiveText(wsA));
+        // RoomCreate self-echo (synchronize) so the owner's room UI proceeds
+        Assert.StartsWith("451-", await ReceiveText(wsA));
+        var createEcho = JsonNode.Parse(BattleCodec.DecodeMsg(await ReceiveBinary(wsA)));
+        Assert.Equal("RoomCreate", createEcho?["uri"]?.GetValue<string>());
 
         await SendText(wsB, "451-2[\"msg\",{\"_placeholder\":true,\"num\":0}]");
         await SendBinary(wsB, BattleCodec.EncodeMsg("{\"uri\":\"RoomEntry\",\"pubSeq\":1}"));
-        var ackB = await ReceiveText(wsB);
-        Assert.Equal("432[1,{\"resultCode\":0}]", ackB);
+        Assert.Equal("432[1,{\"resultCode\":1}]", await ReceiveText(wsB));
+        await ReceiveText(wsB);
+        var entryEcho = JsonNode.Parse(BattleCodec.DecodeMsg(await ReceiveBinary(wsB)));
+        Assert.Equal("RoomEntry", entryEcho?["uri"]?.GetValue<string>());
+        Assert.Equal(1, entryEcho?["isSelf"]?.GetValue<int>());
 
-        var pushA = await ReceiveText(wsA);
-        Assert.StartsWith("451-", pushA);
-        var chunkA = await ReceiveBinary(wsA);
-        var nodeA = JsonNode.Parse(BattleCodec.DecodeMsg(chunkA));
-        Assert.Equal("Matched", nodeA?["uri"]?.GetValue<string>());
-        Assert.Equal("shared-b", nodeA?["bid"]?.GetValue<string>());
-        Assert.Equal(1002L, nodeA?["oppoInfo"]?["viewerId"]?.GetValue<long>());
-        Assert.Equal(1001L, nodeA?["selfInfo"]?["viewerId"]?.GetValue<long>());
-
-        var pushB = await ReceiveText(wsB);
-        var chunkB = await ReceiveBinary(wsB);
-        var nodeB = JsonNode.Parse(BattleCodec.DecodeMsg(chunkB));
-        Assert.Equal("Matched", nodeB?["uri"]?.GetValue<string>());
-        Assert.Equal(1001L, nodeB?["oppoInfo"]?["viewerId"]?.GetValue<long>());
-        Assert.Equal(1002L, nodeB?["selfInfo"]?["viewerId"]?.GetValue<long>());
+        // owner is told the visitor entered
+        await ReceiveText(wsA);
+        var enter = JsonNode.Parse(BattleCodec.DecodeMsg(await ReceiveBinary(wsA)));
+        Assert.Equal("RoomEntry", enter?["uri"]?.GetValue<string>());
+        Assert.Equal(1002L, enter?["oppoId"]?.GetValue<long>());
     }
 
     [Fact]
@@ -170,11 +169,12 @@ public class BattleServerTests : IClassFixture<WebApplicationFactory<BattleServe
         await SendText(wsB, "451-1[\"msg\",{\"_placeholder\":true,\"num\":0}]");
         await SendBinary(wsB, BattleCodec.EncodeMsg("{\"uri\":\"Leave\",\"pubSeq\":1}"));
         var ackB = await ReceiveText(wsB);
-        Assert.Equal("431[1]", ackB);
+        Assert.Equal("431[1,{\"resultCode\":1}]", ackB);
 
+        // owner learns the visitor left (Leave, no longer folded into Release)
         var pushA = await ReceiveText(wsA);
         var chunkA = await ReceiveBinary(wsA);
         var nodeA = JsonNode.Parse(BattleCodec.DecodeMsg(chunkA));
-        Assert.Equal("Release", nodeA?["uri"]?.GetValue<string>());
+        Assert.Equal("Leave", nodeA?["uri"]?.GetValue<string>());
     }
 }

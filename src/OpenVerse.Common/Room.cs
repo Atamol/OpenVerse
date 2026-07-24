@@ -51,6 +51,9 @@ public sealed class RoomStore
     public Room? FindByOwner(string ownerUdid) =>
         _rooms.Values.FirstOrDefault(r => r.OwnerUdid == ownerUdid);
 
+    public Room? FindByUser(string udid) =>
+        _rooms.Values.FirstOrDefault(r => r.OwnerUdid == udid || r.VisitorUdid == udid);
+
     public Room? Enter(string visitorUdid, string roomId)
     {
         if (!_rooms.TryGetValue(roomId, out var r)) return null;

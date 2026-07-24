@@ -1,9 +1,38 @@
+using MessagePack;
 using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
 public class BattleCodecTests
 {
+    static byte[] PackHand(string json, bool withMarker = true)
+    {
+        var packed = MessagePackSerializer.Serialize(json);
+        if (!withMarker) return packed;
+        var result = new byte[packed.Length + 1];
+        result[0] = 0x04;
+        packed.CopyTo(result, 1);
+        return result;
+    }
+
+    [Fact]
+    public void DecodeHandPubSeqReadsIndex3()
+    {
+        Assert.Equal(7, BattleCodec.DecodeHandPubSeq(PackHand("[2,123,\"udid\",7,10,20]")));
+    }
+
+    [Fact]
+    public void DecodeHandPubSeqWithoutMarker()
+    {
+        Assert.Equal(7, BattleCodec.DecodeHandPubSeq(PackHand("[5,123,\"udid\",7,10,20]", withMarker: false)));
+    }
+
+    [Fact]
+    public void DecodeHandPubSeqAcceptsQuotedNumber()
+    {
+        Assert.Equal(7, BattleCodec.DecodeHandPubSeq(PackHand("[2,123,\"udid\",\"7\",10,20]")));
+    }
+
     [Fact]
     public void RoundtripJson()
     {
