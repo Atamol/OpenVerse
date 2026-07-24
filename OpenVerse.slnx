@@ -1,2 +1,15 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpenVerse.Api/OpenVerse.Api.csproj" />
+    <Project Path="src/OpenVerse.Battle/OpenVerse.Battle.csproj" />
+    <Project Path="src/OpenVerse.Common/OpenVerse.Common.csproj" />
+    <Project Path="src/OpenVerse.Engine/OpenVerse.Engine.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenVerse.Tests/OpenVerse.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/OpenVerse.Launcher/OpenVerse.Launcher.csproj" />
+    <Project Path="tools/OpenVerse.Setup/OpenVerse.Setup.csproj" />
+  </Folder>
 </Solution>
