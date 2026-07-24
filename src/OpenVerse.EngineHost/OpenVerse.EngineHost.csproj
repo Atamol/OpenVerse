@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net48 to match the engine: the code below calls thousands of engine members directly, which is only
+         expressible against the same surface. The net10 server loads this by path and talks to ShadowMatch. -->
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <AssemblyName>OpenVerse.EngineHost</AssemblyName>
+    <NoWarn>$(NoWarn);CS0067;CS0649;CS0618</NoWarn>
+    <!-- nothing here builds without the engine, and it is not in the repo -->
+    <GenerateAssemblyInfo Condition="!Exists('$(EngineDir)Assembly-CSharp.dll')">false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(EngineDir)Assembly-CSharp.dll')">
+    <Reference Include="Assembly-CSharp">
+      <HintPath>$(EngineDir)Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(EngineDir)UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Without the engine there is nothing to compile against, so build an empty assembly rather than fail the
+       solution. The server already runs with the shadow disabled when the engine is absent. -->
+  <ItemGroup Condition="!Exists('$(EngineDir)Assembly-CSharp.dll')">
+    <Compile Remove="**/*.cs" />
+  </ItemGroup>
+
+</Project>

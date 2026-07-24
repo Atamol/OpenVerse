@@ -1,0 +1,20 @@
+<Project>
+
+  <!-- ShadowBridge loads OpenVerse.EngineHost.dll by path, so it has to sit beside whatever is running. It is copied
+       rather than carried as content by OpenVerse.Engine because content items are evaluated before OpenVerse.EngineHost
+       has been built. Imported by every project that runs the shadow: the server and the tests. -->
+
+  <PropertyGroup>
+    <EngineHostDll>$(MSBuildThisFileDirectory)OpenVerse.EngineHost\bin\$(Configuration)\net48\OpenVerse.EngineHost.dll</EngineHostDll>
+  </PropertyGroup>
+
+  <Target Name="CopyEngineHost" AfterTargets="Build" Condition="Exists('$(EngineHostDll)')">
+    <Copy SourceFiles="$(EngineHostDll)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- beside the exe, not inside it: a single-file bundle is not reachable by LoadFrom -->
+  <Target Name="PublishEngineHost" AfterTargets="Publish" Condition="Exists('$(EngineHostDll)')">
+    <Copy SourceFiles="$(EngineHostDll)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

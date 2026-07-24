@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- the engine assembly is net48; net10 loads it fine, this just silences the framework-mismatch warning -->
+    <NoWarn>$(NoWarn);MSB3277;CS0618</NoWarn>
+  </PropertyGroup>
+
+  <!-- Assembly-CSharp.dll is the decompiled client rebuilt, and UnityEngine.CoreModule.dll is our own headless shim.
+       Neither is redistributable, so both stay outside the repo and each host builds them locally.
+       They are loaded by name at runtime rather than compiled against, so they ship as content: that also carries them
+       into whatever project references this one, which a <Reference> would not do. -->
+  <!-- The whole dependency closure, not just Assembly-CSharp: constructing a battle resolves types out of the Unity
+       module assemblies and the native-plugin ones, and a missing dependency faults inside engine code where it cannot
+       be caught. UnityEngine.CoreModule here is the shim, everything else comes from the client. -->
+  <ItemGroup>
+    <None Include="$(EngineDir)*.dll">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <!-- must stay loose: a single-file publish would bundle them into the exe, where LoadFrom cannot reach them
+           (the host only extracts native libraries). they are not redistributable anyway, so shipping them beside the
+           exe is also the honest arrangement. -->
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+    </None>
+  </ItemGroup>
+
+  <PropertyGroup Condition="Exists('$(EngineDir)Assembly-CSharp.dll')">
+    <DefineConstants>$(DefineConstants);HAS_ENGINE</DefineConstants>
+  </PropertyGroup>
+
+  <!-- OpenVerse.EngineHost is net48 and drives the engine directly; ShadowBridge reaches it by reflection, so this
+       reference is for build order only. It is copied rather than declared as content because it does not exist yet
+       when items are evaluated on a clean build. -->
+  <ItemGroup Condition="Exists('$(EngineDir)Assembly-CSharp.dll')">
+    <ProjectReference Include="..\OpenVerse.EngineHost\OpenVerse.EngineHost.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

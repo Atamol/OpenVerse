@@ -1,0 +1,11 @@
+<Project>
+  <!-- Where the locally built engine assemblies live. Override with -p:EngineDir=... or the OPENVERSE_ENGINE_DIR
+       environment variable. They are not in the repo: Assembly-CSharp.dll is the decompiled client and cannot be
+       redistributed, so each host rebuilds it. Lives here rather than beside OpenVerse.Engine because
+       OpenVerse.EngineHost needs the same path. -->
+  <PropertyGroup>
+    <EngineDir Condition="'$(EngineDir)' == '' and '$(OPENVERSE_ENGINE_DIR)' != ''">$(OPENVERSE_ENGINE_DIR)</EngineDir>
+    <EngineDir Condition="'$(EngineDir)' == ''">$(MSBuildThisFileDirectory)OpenVerse.Engine\lib\</EngineDir>
+    <EngineDir Condition="!HasTrailingSlash('$(EngineDir)')">$(EngineDir)\</EngineDir>
+  </PropertyGroup>
+</Project>

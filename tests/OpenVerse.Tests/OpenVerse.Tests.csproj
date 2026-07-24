@@ -23,10 +23,13 @@
     <ProjectReference Include="..\..\src\OpenVerse.Common\OpenVerse.Common.csproj" />
     <ProjectReference Include="..\..\src\OpenVerse.Api\OpenVerse.Api.csproj" />
     <ProjectReference Include="..\..\src\OpenVerse.Battle\OpenVerse.Battle.csproj" />
+    <ProjectReference Include="..\..\src\OpenVerse.Engine\OpenVerse.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="..\..\src\OpenVerse.Api\stubs\**\*.json" Link="stubs\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Import Project="..\..\src\EngineHost.targets" />
 
 </Project>
