@@ -116,4 +116,27 @@ public class RoomApiTests : IClassFixture<RoomApiTests.Fixture>
         var data = await Call("/shadowverse/open_room/initialize_room_battle", new { room_id = roomId }, ownerUdid);
         Assert.Equal(expected, data.GetProperty("battle_id").GetString());
     }
+
+    [Fact]
+    public async Task DoMatchingReportsSuccessWithBattleInfo()
+    {
+        var owner = $"{Guid.NewGuid():N}";
+        var created = await Call("/shadowverse/open_room/create_room", new
+        {
+            battle_type = 1, battle_rule = 1, can_friend_watch = 0, can_guild_watch = 0,
+            deck_format = 1, two_pick_type = 0, is_guild_chat = 0,
+        }, owner);
+        var roomId = created.GetProperty("room_id").GetString();
+        var battleId = created.GetProperty("battle_id").GetString();
+        var visitor = $"{Guid.NewGuid():N}";
+        await Call("/shadowverse/open_room/enter_room", new { room_id = roomId }, visitor);
+
+        var om = await Call("/shadowverse/open_room_battle/do_matching", new { }, owner);
+        Assert.Equal(3007, om.GetProperty("matching_state").GetInt32());    // owner
+        Assert.Equal(battleId, om.GetProperty("battle_id").GetString());
+
+        var vm = await Call("/shadowverse/open_room_battle/do_matching", new { }, visitor);
+        Assert.Equal(3004, vm.GetProperty("matching_state").GetInt32());    // visitor
+        Assert.Equal(battleId, vm.GetProperty("battle_id").GetString());
+    }
 }

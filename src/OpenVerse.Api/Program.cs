@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Net;
+using System.Text.Json;
 using MessagePack;
 using OpenVerse.Api;
 using OpenVerse.Common;
@@ -6,12 +8,14 @@ using OpenVerse.Common;
 var builder = WebApplication.CreateBuilder(args);
 
 // tests leave OPENVERSE_LISTEN unset so WebApplicationFactory keeps its TestServer (real launch binds 80 + 443)
+byte[] certDer = [];
 if (Environment.GetEnvironmentVariable("OPENVERSE_LISTEN") == "1")
 {
     var certPath = Environment.GetEnvironmentVariable("OPENVERSE_CERT")
-        ?? Path.Combine(AppContext.BaseDirectory, "certs", "openverse.pfx");
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OpenVerse", "openverse.pfx");
     var certPassword = Environment.GetEnvironmentVariable("OPENVERSE_CERT_PW") ?? "openverse";
-    CertGen.EnsureSelfSigned(certPath, certPassword).Dispose();
+    using (var cert = CertGen.EnsureSelfSigned(certPath, certPassword))
+        certDer = cert.Export(System.Security.Cryptography.X509Certificates.X509ContentType.Cert);  // served at /openverse.cer for auto-trust
     builder.WebHost.ConfigureKestrel(options =>
     {
         options.ListenAnyIP(80);
@@ -30,6 +34,36 @@ if (Directory.Exists(stubDir))
 var udids = new ConcurrentDictionary<string, string>();
 
 var manifestDir = Path.Combine(AppContext.BaseDirectory, "stubs", "manifest");
+
+// fresh clients download bundles the host already has cached. the CDN keys them by content hash, the client
+// cache stores them by name, so map manifest hash -> cached file to serve them from /dl/Resource
+var bundleDir = Environment.GetEnvironmentVariable("OPENVERSE_BUNDLE_DIR")
+    ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "AppData", "LocalLow", "Cygames", "Shadowverse");
+var bundleByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+if (Directory.Exists(bundleDir) && Directory.Exists(manifestDir))
+{
+    var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var sub in new[] { "a", "b", "s", "v", "m", "f" })
+    {
+        var dir = Path.Combine(bundleDir, sub);
+        if (Directory.Exists(dir))
+            foreach (var f in Directory.EnumerateFiles(dir))
+                byName[Path.GetFileName(f)] = f;
+    }
+    foreach (var mf in Directory.GetFiles(manifestDir))
+        foreach (var line in File.ReadLines(mf))
+        {
+            var parts = line.Split(',');
+            if (parts.Length < 2) continue;
+            // audio manifests prefix the name with a cache-subdir (b/, s/, v/) that the cached filename lacks
+            var name = parts[0];
+            var slash = name.LastIndexOf('/');
+            if (slash >= 0) name = name[(slash + 1)..];
+            if (byName.TryGetValue(name, out var full)) bundleByHash[parts[1]] = full;
+        }
+    Console.WriteLine($"Bundles: mapped {bundleByHash.Count} hashes to cached files under {bundleDir}");
+}
 
 var dbPath = Environment.GetEnvironmentVariable("OPENVERSE_DECK_DB")
     ?? Path.Combine(AppContext.BaseDirectory, "openverse.db");
@@ -88,11 +122,21 @@ if (purgedCodes > 0) Console.WriteLine($"DeckCodes: purged {purgedCodes} codes o
 var deckCodeHandler = new DeckCodeHandler(deckCodeStore);
 
 var users = new UserStore();
+// the host's own game reaches us over loopback (its hosts file points at 127.0.0.1), so this names the host. a joining
+// client can't be read from here - its launcher POSTs its name to /openverse/name and we key that by source IP
+var hostName = NameResolver.Resolve(AppContext.BaseDirectory);
+Console.WriteLine($"Name: host = {hostName ?? "(unresolved, using generated)"}");
+var ipNames = new ConcurrentDictionary<string, string>();
+// a joining client keeps its decks on its own machine: its launcher pushes them here before the game starts and pulls
+// them back after. both are keyed by source IP because only the game knows its udid, and it hasn't spoken yet at push time
+var ipUdids = new ConcurrentDictionary<string, string>();
+var pendingDecks = new ConcurrentDictionary<string, string>();
 var rooms = new RoomStore
 {
     NodeServerUrl = Environment.GetEnvironmentVariable("OPENVERSE_NODE_URL") ?? "127.0.0.1:3001",
 };
-var roomHandler = new RoomHandler(rooms, users);
+var battleDeckStore = new BattleDeckStore(dbPath);
+var roomHandler = new RoomHandler(rooms, users, deckStore, battleDeckStore);
 
 var dataDir = Path.Combine(AppContext.BaseDirectory, "data");
 var cardDataPath = Path.Combine(dataDir, "shadowverse_ja.json");
@@ -178,6 +222,19 @@ var sleeveManifest = Path.Combine(manifestDir, "sleeve_assetmanifest");
 var sleeveListJson = SleeveListBuilder.BuildJson(sleeveManifest);
 Console.WriteLine($"SleeveList: granted {sleeveListJson.Split("\"sleeve_id\"").Length - 1} sleeves");
 
+// re-key the pushed decks onto this host's udid for the player: deck_no/order carry over, the udid does not
+void ImportDecks(string udid, string json)
+{
+    try
+    {
+        var decks = JsonSerializer.Deserialize<List<Deck>>(json);
+        if (decks is null) return;
+        foreach (var d in decks) { d.UserKey = udid; deckStore.Save(d); }
+        Console.WriteLine($"Decks: imported {decks.Count} for udid={udid}");
+    }
+    catch (Exception e) { Console.WriteLine($"Decks: import failed ({e.Message})"); }
+}
+
 app.MapMethods("/{**path}", ["GET", "POST"], async context =>
 {
     var req = context.Request;
@@ -199,6 +256,21 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         udids.TryGetValue(sid, out udid);
 
     Console.WriteLine($"\n{req.Method} {path}  ({body.Length} bytes) udid={udid}");
+    // bind whoever this box registered (or the host, over loopback) to the udid, so every screen shows the same name
+    if (udid is not null)
+    {
+        var ip = context.Connection.RemoteIpAddress;
+        var resolved = ip is not null && IPAddress.IsLoopback(ip)
+            ? hostName
+            : ipNames.GetValueOrDefault(ip?.ToString() ?? "");
+        if (resolved is not null) users.GetOrCreate(udid).Name = resolved;
+        // now that this box's udid is known, adopt whatever its launcher pushed and let it pull back later
+        if (ip is not null)
+        {
+            ipUdids[ip.ToString()] = udid;
+            if (pendingDecks.TryRemove(ip.ToString(), out var pushed)) ImportDecks(udid, pushed);
+        }
+    }
     string? reqJson = null;
     if (udid is not null && body.Length > 32)
     {
@@ -206,10 +278,55 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         catch (Exception e) { Console.WriteLine($"  decode failed: {e.Message}"); }
     }
 
+    // a joining client's launcher posts its own name here (plain HTTP, same as the cert fetch) since we can't read that
+    // machine's name.txt or Steam install. keyed by source IP: the game then connects from the same box
+    if (path.Equals("/openverse/name", StringComparison.OrdinalIgnoreCase))
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString();
+        var posted = System.Text.Encoding.UTF8.GetString(body).Trim();
+        if (ip is not null && posted.Length > 0)
+        {
+            ipNames[ip] = posted;
+            Console.WriteLine($"Name: {ip} = {posted}");
+        }
+        context.Response.StatusCode = 204;
+        return;
+    }
+
+    // a client's decks live on its own machine, not on whoever it happened to join. push before the game starts (the
+    // udid is not known yet, so hold it by IP), pull after it exits
+    if (path.Equals("/openverse/decks", StringComparison.OrdinalIgnoreCase))
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString();
+        if (ip is null) { context.Response.StatusCode = 400; return; }
+        if (req.Method == "POST")
+        {
+            var pushed = System.Text.Encoding.UTF8.GetString(body);
+            if (ipUdids.TryGetValue(ip, out var known)) ImportDecks(known, pushed);
+            else pendingDecks[ip] = pushed;
+            context.Response.StatusCode = 204;
+            return;
+        }
+        var decks = ipUdids.TryGetValue(ip, out var u) ? deckStore.List(u) : [];
+        Console.WriteLine($"Decks: {ip} pulled {decks.Count}");
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(JsonSerializer.Serialize(decks));
+        return;
+    }
+
+    if (path.Equals("/openverse.cer", StringComparison.OrdinalIgnoreCase) && certDer.Length > 0)
+    {
+        Console.WriteLine("  -> serving cert");
+        context.Response.ContentType = "application/x-x509-ca-cert";
+        await context.Response.Body.WriteAsync(certDer);
+        return;
+    }
+
     if (path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase))
     {
         var name = Path.GetFileName(path);
         var file = Path.Combine(manifestDir, name);
+        if (!File.Exists(file) && bundleByHash.TryGetValue(name, out var cached)) file = cached;
         if (File.Exists(file))
         {
             Console.WriteLine($"  -> serving {file} ({new FileInfo(file).Length} bytes)");
@@ -243,9 +360,24 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
     else
         await context.Response.WriteAsync("{}");
 
+    // the stub ships a placeholder, not a name: whoever runs the host would otherwise be the name every client sees
+    string WithName(string stub, string userKey)
+    {
+        var name = users.GetOrCreate(userKey).Name;
+        var quoted = JsonSerializer.Serialize(name);
+        return stub.Replace("\"__OPENVERSE_NAME__\"", quoted);
+    }
+
     string Response(string p, string? json, string userKey)
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        // SignUpTask reads viewer_id/short_udid/udid from data_headers (not data), and aborts if the udid isn't its own
+        if (p.Contains("tool/signup"))
+        {
+            var u = users.GetOrCreate(userKey);
+            Console.WriteLine($"  -> [signup] viewer_id={u.ViewerId}");
+            return $"{{\"data_headers\":{{\"result_code\":1,\"servertime\":{now},\"viewer_id\":{u.ViewerId},\"short_udid\":{u.ViewerId},\"udid\":\"{userKey}\"}},\"data\":{{}}}}";
+        }
         string data;
         string handler;
         if (DeckHandler.CanHandle(p) && json is not null) { handler = "deck"; data = deckHandler.Handle(p, json, userKey); }
@@ -254,7 +386,7 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         else if (p.Contains("load/index"))
         {
             handler = "stub:load_index";
-            var raw = stubs.GetValueOrDefault("load_index", "{}");
+            var raw = WithName(stubs.GetValueOrDefault("load_index", "{}"), userKey);
             raw = raw.Replace("\"user_sleeve_list\": []", "\"user_sleeve_list\": " + sleeveListJson);
             var deckGroups = deckHandler.BuildLoadIndexDeckGroups(userKey);
             var deckGroupsInner = deckGroups.Substring(1, deckGroups.Length - 2);
@@ -264,7 +396,7 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
                 ? raw.TrimEnd().TrimEnd('}') + $",\"card_master_hash\":\"{cardMasterHash}\",\"user_card_list\":{userCardListJson},\"open_battle_field_id_list\":{battleFields},{deckGroupsInner}}}"
                 : raw;
         }
-        else if (p.Contains("mypage/index")) { handler = "stub:mypage_index"; data = stubs.GetValueOrDefault("mypage_index", "{}"); }
+        else if (p.Contains("mypage/index")) { handler = "stub:mypage_index"; data = WithName(stubs.GetValueOrDefault("mypage_index", "{}"), userKey); }
         else if (p.Contains("mypage/refresh")) { handler = "stub:mypage_refresh"; data = stubs.GetValueOrDefault("mypage_refresh", "{}"); }
         else if (p.Contains("introduce_deck/series_list")) { handler = "introduce_deck_series"; data = deckHandler.IntroduceDeckSeriesList(); }
         else if (p.Contains("introduce_deck/info")) { handler = "introduce_deck"; data = deckHandler.IntroduceDeckInfo(json ?? "{}"); }

@@ -31,7 +31,7 @@
   ],
   "red_ether_overwrite_list": [],
   "user_info": {
-    "name": "Atamol",
+    "name": "__OPENVERSE_NAME__",
     "birth": "",
     "selected_emblem_id": 100000000,
     "selected_degree_id": 101001,
@@ -91,5 +91,20 @@
   "reprinted_base_card_ids": [],
   "challenge_config": { "use_challenge_two_pick_premium_card": 0, "challenge_two_pick_sleeve_id": 0 },
   "feature_maintenance_list": [],
+  "pre_release_info": {
+    "end_time": "1970-01-01 00:00:00",
+    "display_end_time": "1970-01-01 00:00:00",
+    "rotation_card_set_id_list": [],
+    "reprinted_base_card_ids": [],
+    "latest_reprinted_base_card_ids": [],
+    "next_card_set_id": 0,
+    "card_master_id": "Default",
+    "pre_release_status": 0,
+    "is_pre_rotation_free_match_term": 0
+  },
+  "avatar_info": {
+    "abilities": {},
+    "schedules": {}
+  },
   "is_battle_pass_period": false
 }

@@ -1,5 +1,5 @@
 {
-  "user_info": { "name": "Atamol" },
+  "user_info": { "name": "__OPENVERSE_NAME__" },
   "unreceived_mission_reward_count": 0,
   "receive_friend_apply_count": 0,
   "guild_notification": { "guild_id": 0, "guild_room_message_id": 0, "is_join_request": 0, "is_invited": 0 },
@@ -67,13 +67,6 @@
   },
   "shop_notification": { "card_pack": {}, "build_deck": {}, "sleeve": {}, "leader_skin": {} },
   "story_notification": {},
-  "treasure_info": {
-    "daily_box_got_num": 0,
-    "max_daily_box_got_num": 0,
-    "grade_id": 0,
-    "daily_rare_box_state": 0,
-    "end_time": "2099-12-31 23:59:59",
-    "limited_reward_info": []
-  },
+  "treasure_info": null,
   "is_battle_pass_period": 0
 }

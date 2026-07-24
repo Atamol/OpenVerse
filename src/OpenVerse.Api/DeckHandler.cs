@@ -155,7 +155,8 @@ public sealed class DeckHandler
 
     public static bool CanHandle(string path) =>
         path.StartsWith("/shadowverse/deck/", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("/shadowverse/auto_deck/", StringComparison.OrdinalIgnoreCase);
+        path.StartsWith("/shadowverse/auto_deck/", StringComparison.OrdinalIgnoreCase) ||
+        path.Equals("/shadowverse/open_room/deck_list", StringComparison.OrdinalIgnoreCase);
 
     public string Handle(string path, string reqJson, string userKey)
     {

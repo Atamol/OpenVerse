@@ -70,6 +70,29 @@ public class DeckApiTests : IClassFixture<DeckApiTests.Fixture>
     }
 
     [Fact]
+    public async Task SignupReturnsViewerIdAndEchoesUdid()
+    {
+        var reqJson = JsonSerializer.Serialize(new
+        {
+            device_name = "pc", client_type = "3", os_version = "Windows",
+            app_version = "4.7.0", resource_version = "00000000", carrier = "",
+        });
+        var body = WireCrypto.EncryptApi(MessagePackSerializer.ConvertFromJson(reqJson), _udid, RandomNumberGenerator.GetBytes(32));
+        var msg = new HttpRequestMessage(HttpMethod.Post, "/shadowverse/tool/signup");
+        msg.Headers.Add("udid", _udid);
+        msg.Content = new ByteArrayContent(body);
+        var res = await _c.SendAsync(msg);
+        res.EnsureSuccessStatusCode();
+        var back = MessagePackSerializer.ConvertToJson(WireCrypto.DecryptApi(Convert.FromBase64String(await res.Content.ReadAsStringAsync()), _udid));
+        // SignUpTask reads these from data_headers and rejects a mismatched udid
+        var h = JsonDocument.Parse(back).RootElement.GetProperty("data_headers");
+        Assert.Equal(1, h.GetProperty("result_code").GetInt32());
+        Assert.True(h.GetProperty("viewer_id").GetInt64() > 0);
+        Assert.True(h.GetProperty("short_udid").GetInt64() > 0);
+        Assert.Equal(_udid, h.GetProperty("udid").GetString());
+    }
+
+    [Fact]
     public void IntroduceDeckInfoServesRealDecks()
     {
         var dbp = Path.Combine(Path.GetTempPath(), $"ov-intro-{Guid.NewGuid():N}.db");
