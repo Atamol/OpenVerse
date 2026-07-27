@@ -22,5 +22,5 @@ tests/Shadowverse/
 
 Thumbs.db
 .DS_Store
-# locally built engine (decompiled client + our unity shim) - not redistributable
+
 src/OpenVerse.Engine/lib/
