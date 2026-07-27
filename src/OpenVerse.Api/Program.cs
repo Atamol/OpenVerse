@@ -35,14 +35,51 @@ var udids = new ConcurrentDictionary<string, string>();
 
 var manifestDir = Path.Combine(AppContext.BaseDirectory, "stubs", "manifest");
 
-// fresh clients download bundles the host already has cached. the CDN keys them by content hash, the client
-// cache stores them by name, so map manifest hash -> cached file to serve them from /dl/Resource
 var bundleDir = Environment.GetEnvironmentVariable("OPENVERSE_BUNDLE_DIR")
     ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "AppData", "LocalLow", "Cygames", "Shadowverse");
-var bundleByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-if (Directory.Exists(bundleDir) && Directory.Exists(manifestDir))
+
+// the client's own copy is the better skeleton: its hashes may be poisoned but the names and categories survive
+var clientManifestDir = Path.Combine(bundleDir, "manifest");
+var serveManifestDir = Directory.Exists(clientManifestDir)
+    && Directory.EnumerateFiles(clientManifestDir, "*assetmanifest").Any()
+    ? clientManifestDir : manifestDir;
+
+// the client writes a BOM every time it saves a manifest, so handing its own file back grows it by 3 bytes a launch and
+// the strays end up glued to the first row's name (the parser only eats one)
+static byte[] ReadManifest(string file)
 {
+    var b = File.ReadAllBytes(file);
+    int i = 0;
+    while (i + 3 <= b.Length && b[i] == 0xEF && b[i + 1] == 0xBB && b[i + 2] == 0xBF) i += 3;
+    return i == 0 ? b : b[i..];
+}
+
+static string Md5Hex(byte[] bytes) =>
+    Convert.ToHexString(System.Security.Cryptography.MD5.HashData(bytes)).ToLowerInvariant();
+
+var manifestBytes = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+if (Directory.Exists(serveManifestDir))
+    foreach (var mf in Directory.GetFiles(serveManifestDir))
+        manifestBytes[Path.GetFileName(mf)] = ReadManifest(mf);
+
+var bundleByHash = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+if (Directory.Exists(bundleDir) && manifestBytes.Count > 0)
+{
+    var sidecar = Path.Combine(bundleDir, "openverse-bundles.csv");
+    if (!File.Exists(sidecar))
+        Console.WriteLine("Bundles: indexing the game's files, this takes a minute or two the first time");
+    var index = ManifestIndex.Build(bundleDir, sidecar, Console.WriteLine);
+
+    var rewritten = 0;
+    var deferred = 0;
+    foreach (var name in manifestBytes.Keys.ToList())
+    {
+        manifestBytes[name] = index.Rewrite(manifestBytes[name], out var r, out var d);
+        rewritten += r;
+        deferred += d;
+    }
+
     var byName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     foreach (var sub in new[] { "a", "b", "s", "v", "m", "f" })
     {
@@ -51,8 +88,8 @@ if (Directory.Exists(bundleDir) && Directory.Exists(manifestDir))
             foreach (var f in Directory.EnumerateFiles(dir))
                 byName[Path.GetFileName(f)] = f;
     }
-    foreach (var mf in Directory.GetFiles(manifestDir))
-        foreach (var line in File.ReadLines(mf))
+    foreach (var (_, raw) in manifestBytes)
+        foreach (var line in System.Text.Encoding.UTF8.GetString(raw).Split('\n'))
         {
             var parts = line.Split(',');
             if (parts.Length < 2) continue;
@@ -60,10 +97,32 @@ if (Directory.Exists(bundleDir) && Directory.Exists(manifestDir))
             var name = parts[0];
             var slash = name.LastIndexOf('/');
             if (slash >= 0) name = name[(slash + 1)..];
-            if (byName.TryGetValue(name, out var full)) bundleByHash[parts[1]] = full;
+            if (byName.TryGetValue(name.Trim(), out var full)) bundleByHash[parts[1]] = full;
         }
-    Console.WriteLine($"Bundles: mapped {bundleByHash.Count} hashes to cached files under {bundleDir}");
+    Console.WriteLine($"Bundles: {index.Count} files indexed ({index.Hashed} hashed), {rewritten} manifest rows matched, {deferred} not on this machine");
 }
+
+// the client never caches manifest_assetmanifest (it refetches it to check for updates), so it has to be built here.
+// sizes in this one are bytes, not the MiB the sub-manifests use
+byte[] SynthesizeManifestOfManifests()
+{
+    var stubTop = Path.Combine(manifestDir, "manifest_assetmanifest");
+    if (!File.Exists(stubTop)) return [];
+    var lines = new List<string>();
+    foreach (var raw in System.Text.Encoding.UTF8.GetString(ReadManifest(stubTop)).Split('\n'))
+    {
+        var parts = raw.Split(',');
+        if (parts.Length >= 6 && manifestBytes.TryGetValue(parts[0], out var sub))
+        {
+            var h = Md5Hex(sub);
+            var s = sub.Length.ToString();
+            lines.Add($"{parts[0]},{h},{parts[2]},{s},{h},{s}");
+        }
+        else lines.Add(raw);
+    }
+    return System.Text.Encoding.UTF8.GetBytes(string.Join('\n', lines));
+}
+var manifestOfManifests = SynthesizeManifestOfManifests();
 
 var dbPath = Environment.GetEnvironmentVariable("OPENVERSE_DECK_DB")
     ?? Path.Combine(AppContext.BaseDirectory, "openverse.db");
@@ -325,8 +384,22 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
     if (path.StartsWith("/dl/", StringComparison.OrdinalIgnoreCase))
     {
         var name = Path.GetFileName(path);
-        var file = Path.Combine(manifestDir, name);
-        if (!File.Exists(file) && bundleByHash.TryGetValue(name, out var cached)) file = cached;
+        if (name == "manifest_assetmanifest" && manifestOfManifests.Length > 0)
+        {
+            Console.WriteLine($"  -> serving manifest_assetmanifest (synthesized, {manifestOfManifests.Length} bytes)");
+            context.Response.ContentLength = manifestOfManifests.Length;
+            await context.Response.Body.WriteAsync(manifestOfManifests);
+            return;
+        }
+        if (manifestBytes.TryGetValue(name, out var mBytes))
+        {
+            Console.WriteLine($"  -> serving {name} ({mBytes.Length} bytes, BOM-stripped)");
+            context.Response.ContentLength = mBytes.Length;
+            await context.Response.Body.WriteAsync(mBytes);
+            return;
+        }
+        var file = "";
+        if (bundleByHash.TryGetValue(name, out var cached)) file = cached;
         if (File.Exists(file))
         {
             Console.WriteLine($"  -> serving {file} ({new FileInfo(file).Length} bytes)");
