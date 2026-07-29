@@ -16,6 +16,7 @@ src/OpenVerse.Api/data/*
 analysis/
 tests/Shadowverse/
 
+.vscode/
 .vs/
 .idea/
 *.user
