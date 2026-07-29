@@ -9,6 +9,8 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Launcher;
 
+enum Args { help, host, client, advertise }
+
 static class Program
 {
     const string Marker = "openverse";
@@ -18,8 +20,24 @@ static class Program
 
     static int Main(string[] args)
     {
+        CmdHelper.RegisterArg(Args.help, new CommandExplanation(
+            "print this usage text", "help", "-h")
+        { TakeValue = false });
+        CmdHelper.RegisterArg(Args.host, new CommandExplanation(
+            "run in client mode and connects to the host ip or name. if you leave this empty then try read host.txt in the same dir. if host.txt is also empty then run in host mode.", "host"));
+        CmdHelper.RegisterArg(Args.client, new CommandExplanation(
+            "the Shadowverse client's data folder (card_master cache, decks); default: %UserProfile%\\AppData\\LocalLow\\Cygames\\Shadowverse", "client"));
+        CmdHelper.RegisterArg(Args.advertise, new CommandExplanation(
+            "the IP advertised to joining clients for the battle server (host mode only); default: auto-detected LAN/VPN IP", "advertise"));
+
+        if (CmdHelper.HasFlag(args, Args.help))
+        {
+            Console.WriteLine(CmdHelper.GenerateMan());
+            return 0;
+        }
+
         var baseDir = AppContext.BaseDirectory;
-        var joinHost = ArgVal(args, "--host") ?? ReadHostFile(baseDir);  // client mode: point the game at a host's server
+        var joinHost = CmdHelper.ReadArg(args, Args.host) ?? ReadHostFile(baseDir);  // client mode: point the game at a host's server
 
         if (!IsAdmin())
         {
@@ -54,7 +72,7 @@ static class Program
     // the game's own data folder (where the card-master cache lives). decks go here rather than beside the exe so that
     // replacing the OpenVerse folder with a new build never touches them - the same reason the cert lives outside it
     static string GameDataDir(string[] args) =>
-        ArgVal(args, "--client")
+        CmdHelper.ReadArg(args, Args.client)
         ?? Environment.GetEnvironmentVariable("OPENVERSE_CLIENT_DATA")
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                         "AppData", "LocalLow", "Cygames", "Shadowverse");
@@ -103,7 +121,7 @@ static class Program
             return 1;
         }
 
-        var advertise = ArgVal(args, "--advertise") ?? DetectLanIp();  // host's reachable IP so friends get a valid node_server_url
+        var advertise = CmdHelper.ReadArg(args, Args.advertise) ?? DetectLanIp();  // host's reachable IP so friends get a valid node_server_url
 
         Process? server = null, battle = null;
         var hostsEdited = false;
@@ -334,12 +352,6 @@ static class Program
             if (!skip) kept.Add(l);
         }
         return string.Join('\n', kept);
-    }
-
-    static string? ArgVal(string[] a, string name)
-    {
-        var i = Array.IndexOf(a, name);
-        return i >= 0 && i + 1 < a.Length ? a[i + 1] : null;
     }
 
     // pick the IP friends connect to: prefer a Radmin VPN adapter, else the first non-loopback IPv4
