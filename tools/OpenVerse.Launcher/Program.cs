@@ -24,7 +24,7 @@ static class Program
             "print this usage text", "help", "-h")
         { TakeValue = false });
         CmdHelper.RegisterArg(Args.host, new CommandExplanation(
-            "run in client mode and connects to the host ip or name. if you leave this empty then try read host.txt in the same dir. if host.txt is also empty then run in host mode.", "host"));
+            "this decides whether running client or host. by default run in client mode and connects to the host ip or name. if you leave this empty then try read host.txt in the same dir. if host.txt is also empty then run in host mode.", "host"));
         CmdHelper.RegisterArg(Args.client, new CommandExplanation(
             "the Shadowverse client's data folder (card_master cache, decks); default: %UserProfile%\\AppData\\LocalLow\\Cygames\\Shadowverse", "client"));
         CmdHelper.RegisterArg(Args.advertise, new CommandExplanation(
