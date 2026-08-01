@@ -17,6 +17,7 @@ analysis/
 tests/Shadowverse/
 
 .vs/
+.vscode/
 .idea/
 *.user
 
@@ -24,3 +25,5 @@ Thumbs.db
 .DS_Store
 
 src/OpenVerse.Engine/lib/
+
+graphify-out/
