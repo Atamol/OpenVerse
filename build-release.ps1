@@ -6,7 +6,7 @@ $rel = Join-Path $PSScriptRoot "release"
 
 $stash = Join-Path ([System.IO.Path]::GetTempPath()) "openverse-stash"
 Remove-Item -Recurse -Force $stash -ErrorAction SilentlyContinue
-$carry = @("openverse.db", "data/card_master_full.csv.gz")
+$carry = @("openverse.db", "data/card_master_full.csv.gz", "openverse.log", "openverse-prev.log", "engine.txt")
 foreach ($f in $carry) {
   $src = Join-Path $rel $f
   if (Test-Path $src) {
@@ -46,13 +46,15 @@ Get-ChildItem $rel -File | Where-Object {
 
 Set-Content -Path (Join-Path $rel "host.txt") -Value "# to join as a client, put the host's IP here on one line. if you are the host, leave this empty" -Encoding UTF8
 Set-Content -Path (Join-Path $rel "name.txt") -Value "# put your in-game name here (one line). delete the line to fall back to your Steam name." -Encoding UTF8
+# the engine only watches unless this says otherwise, since anything above Observe changes what players see
+Set-Content -Path (Join-Path $rel "engine.txt") -Value "# Observe | AdviseCost | AnswerBlanks. uncomment one line to change what the battle engine is allowed to do`n# AdviseCost" -Encoding UTF8
 
 $zip = Join-Path $PSScriptRoot "OpenVerse.zip"
 Remove-Item -Force $zip -ErrorAction SilentlyContinue
 
 $exes = @("openverse-setup.exe", "openverse-launcher.exe", "OpenVerse.Api.exe", "OpenVerse.Battle.exe")
 foreach ($e in $exes) { if (-not (Test-Path (Join-Path $rel $e))) { throw "missing from publish: $e" } }
-$ship = ($exes + @("host.txt", "name.txt", "data", "stubs")) | ForEach-Object { Join-Path $rel $_ }
+$ship = ($exes + @("host.txt", "name.txt", "engine.txt", "data", "stubs")) | ForEach-Object { Join-Path $rel $_ }
 Compress-Archive -Path $ship -DestinationPath $zip -CompressionLevel Optimal
 
 $deny = @("Assembly-CSharp.dll", "Assembly-CSharp-firstpass.dll", "OpenVerse.EngineHost.dll", "card_master_full.csv.gz")
