@@ -78,8 +78,10 @@ public partial class BattleServer
             var session = new Session(ws, battleId, viewerId);
             session.OnEvent += (s, pkt, bin) =>
                 Console.WriteLine($"[{s.Id}] event: {pkt.EventName ?? "(none)"} ackId={pkt.AckId} binaries={bin.Length}");
-            session.OnMsg += (s, uri, payload, ackId) => _ = hub.Dispatch(s, uri, payload, ackId);
-            session.OnAliveEmit += s => _ = hub.Alive(s);
+            // a handler that throws never relays its message, and the peer sits on the gap in its playSeq stream for the
+            // rest of the match, so one bad message desyncs everything after it. nothing observes these tasks, so say it
+            session.OnMsg += (s, uri, payload, ackId) => _ = Observe(hub.Dispatch(s, uri, payload, ackId), s, uri);
+            session.OnAliveEmit += s => _ = Observe(hub.Alive(s), s, "alive");
             sessions.Add(session);
             SessionCreated?.Invoke(session);
             try { await session.Run(ctx.RequestAborted); }
@@ -94,5 +96,14 @@ public partial class BattleServer
         });
 
         return app;
+    }
+
+    static async Task Observe(Task work, Session s, string what)
+    {
+        try { await work; }
+        catch (Exception e)
+        {
+            Console.WriteLine($"[{s.Id}] {what} HANDLER THREW, the peer never got this message: {e}");
+        }
     }
 }

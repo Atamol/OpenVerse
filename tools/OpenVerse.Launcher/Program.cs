@@ -31,6 +31,10 @@ static class Program
         try
         {
             var logPath = Path.Combine(baseDir, "openverse.log");
+            // a desync is usually noticed after the fact, and starting over used to erase the run that showed it. keep
+            // the previous one, the same way the game keeps Player-prev.log
+            try { if (File.Exists(logPath)) File.Move(logPath, Path.Combine(baseDir, "openverse-prev.log"), overwrite: true); }
+            catch (IOException) { }
             var logStream = new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.Read);
             var tee = new TeeWriter(Console.Out, new StreamWriter(logStream, new UTF8Encoding(false)) { AutoFlush = true });
             Console.SetOut(tee);
@@ -226,9 +230,13 @@ static class Program
         catch (Exception e) { Console.WriteLine($"could not register name with {host} ({e.Message}); the host will generate one."); }
     }
 
-    static string? ReadHostFile(string baseDir)
+    static string? ReadHostFile(string baseDir) => ReadSetting(baseDir, "host.txt");
+
+    // elevation goes through ShellExecute, which drops the environment, so a setting given as an env var never reaches
+    // the elevated run. one line in a file next to the exe survives and works from a double-click
+    static string? ReadSetting(string baseDir, string name)
     {
-        var f = Path.Combine(baseDir, "host.txt");  // one line with the host IP, so a client can just double-click
+        var f = Path.Combine(baseDir, name);
         return File.Exists(f)
             ? File.ReadLines(f).Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0 && !l.StartsWith('#'))
             : null;
@@ -390,6 +398,11 @@ static class Program
         var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = baseDir };
         psi.Environment["ASPNETCORE_URLS"] = "http://0.0.0.0:3001";
         psi.Environment["OPENVERSE_DECK_DB"] = deckDb;
+        if (ReadSetting(baseDir, "engine.txt") is { } role)
+        {
+            psi.Environment["OPENVERSE_ENGINE_ROLE"] = role;
+            Console.WriteLine($"engine role: {role} (from engine.txt)");
+        }
         return StartWithTee(psi);
     }
 
