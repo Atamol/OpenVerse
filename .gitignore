@@ -12,12 +12,11 @@ src/OpenVerse.Api/data/*
 !src/OpenVerse.Api/data/practice_info.json
 !src/OpenVerse.Api/data/starter_decks.json
 !src/OpenVerse.Api/data/deck_intro.json
-!src/OpenVerse.Api/data/leader_intro.json
+!src/OpenVerse.Api/data/leader_skin_list.json
 
 analysis/
 tests/Shadowverse/
 
-.vscode/
 .vs/
 .vscode/
 .idea/
@@ -27,5 +26,4 @@ Thumbs.db
 .DS_Store
 
 src/OpenVerse.Engine/lib/
-
 graphify-out/
