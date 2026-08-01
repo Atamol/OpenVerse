@@ -5,17 +5,22 @@ OpenVerse.zip
 
 launcher.log
 
+graphify-out/
+
 ref/
 src/OpenVerse.Api/certs/
+
 
 src/OpenVerse.Api/data/*
 !src/OpenVerse.Api/data/practice_info.json
 !src/OpenVerse.Api/data/starter_decks.json
 !src/OpenVerse.Api/data/deck_intro.json
+!src/OpenVerse.Api/data/leader_skin_list.json
 
 analysis/
 tests/Shadowverse/
 
+.vscode/
 .vs/
 .idea/
 *.user
