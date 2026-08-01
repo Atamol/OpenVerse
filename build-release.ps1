@@ -31,7 +31,7 @@ foreach ($p in $projects) {
   if ($LASTEXITCODE -ne 0) { throw "publish failed: $p" }
 }
 
-$keep = @("practice_info.json", "starter_decks.json", "deck_intro.json")
+$keep = @("practice_info.json", "starter_decks.json", "deck_intro.json", "leader_skin_list.json")
 Get-ChildItem (Join-Path $rel "data") -File -ErrorAction SilentlyContinue |
   Where-Object { $keep -notcontains $_.Name } | Remove-Item -Force
 Remove-Item -Recurse -Force (Join-Path $rel "certs") -ErrorAction SilentlyContinue
