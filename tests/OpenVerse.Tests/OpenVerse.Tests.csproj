@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <None Include="..\..\src\OpenVerse.Api\stubs\**\*.json" Link="stubs\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="assets\**\*" Link="assets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Import Project="..\..\src\EngineHost.targets" />

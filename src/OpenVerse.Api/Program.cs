@@ -277,6 +277,10 @@ else if (File.Exists(cardDataPath))
     Console.WriteLine($"UserCardList: granted {userCardListJson.Split("\"card_id\"").Length - 1} cards");
 }
 
+var leaderSkinListPath = Path.Combine(AppContext.BaseDirectory, "data", "leader_skin_list.json");
+var leaderSkinListJson = File.Exists(leaderSkinListPath) ? File.ReadAllText(leaderSkinListPath).Trim() : "[]";
+Console.WriteLine($"LeaderSkinList: {(leaderSkinListJson == "[]" ? "none granted" : $"granted {JsonDocument.Parse(leaderSkinListJson).RootElement.GetArrayLength()} skins")}");
+
 var sleeveManifest = Path.Combine(manifestDir, "sleeve_assetmanifest");
 var sleeveListJson = SleeveListBuilder.BuildJson(sleeveManifest);
 Console.WriteLine($"SleeveList: granted {sleeveListJson.Split("\"sleeve_id\"").Length - 1} sleeves");
@@ -461,6 +465,7 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
             handler = "stub:load_index";
             var raw = WithName(stubs.GetValueOrDefault("load_index", "{}"), userKey);
             raw = raw.Replace("\"user_sleeve_list\": []", "\"user_sleeve_list\": " + sleeveListJson);
+            raw = raw.Replace("\"user_leader_skin_list\": []", "\"user_leader_skin_list\": " + leaderSkinListJson);
             var deckGroups = deckHandler.BuildLoadIndexDeckGroups(userKey);
             var deckGroupsInner = deckGroups.Substring(1, deckGroups.Length - 2);
             // open_battle_field_id_list: without it the battle scene NREs in CalculationRandomStage at start

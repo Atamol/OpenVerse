@@ -9,15 +9,19 @@ using Wizard.BattleMgr;
 // knownList strip).
 public static class ShadowReconciler
 {
-    // The shadow is never told which card either player drew: TurnStart carries no index, and an in-play draw names the
-    // index only in orderList, which the receive path drops (the engine re-simulates and takes its own deck top). Index
-    // is not deck order either (the client reshuffles index assignment off idxChangeSeed on every card entering the
-    // deck), so the two never line up on their own. So every card the actor drew is still in the shadow's deck: the
-    // play is accepted and charged but nothing leaves the deck, and the later ATTACK/EVOLUTION find null in
+    // A draw names its index only in orderList, which the receive path drops (the engine re-simulates and takes its own
+    // deck top). Index is not deck order either (the client reshuffles index assignment off idxChangeSeed on every card
+    // entering the deck), so the two never line up on their own. So every card the actor drew is still in the shadow's
+    // deck: the play is accepted and charged but nothing leaves the deck, and the later ATTACK/EVOLUTION find null in
     // ClassAndInPlayCardList. Each message says where its cards were (move from/to, plus what the action type implies),
     // so put them there before the engine reads it and its own simulation does the rest.
 
     const int Deck = 0, Hand = 10, Field = 20, Cemetery = 30, Banish = 40, Create = 50;
+
+    // the turn draw rides on the turn messages, not on a play, and skipping them leaves every drawn card stuck in the
+    // shadow's deck for the rest of the match
+    static bool Carries(string uri) =>
+        uri == "PlayActions" || uri == "TurnStart" || uri == "TurnEndActions" || uri == "TurnEnd";
 
     public static int Hoisted, Recovered, Unplaced;
 
@@ -27,7 +31,7 @@ public static class ShadowReconciler
 
     public static void Repair(BattleManagerBase mgr, string uri, Dictionary<string, object> body, bool isPlayer, int type, int playIdx)
     {
-        if (uri != "PlayActions") return;
+        if (!Carries(uri)) return;
 
         var moves = Moves(body);
 
@@ -70,7 +74,7 @@ public static class ShadowReconciler
     // ones now, while the play that caused them is still the last thing that happened
     public static void RepairAfter(BattleManagerBase mgr, string uri, Dictionary<string, object> body, bool isPlayer)
     {
-        if (uri != "PlayActions") return;
+        if (!Carries(uri)) return;
         var self = new Dictionary<int, int>();
         var oppo = new Dictionary<int, int>();
         foreach (var m in Moves(body))

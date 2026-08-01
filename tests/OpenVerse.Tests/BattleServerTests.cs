@@ -177,4 +177,30 @@ public class BattleServerTests : IClassFixture<WebApplicationFactory<BattleServe
         var nodeA = JsonNode.Parse(BattleCodec.DecodeMsg(chunkA));
         Assert.Equal("Leave", nodeA?["uri"]?.GetValue<string>());
     }
+
+    // a client repeats JudgeResult until a BattleFinish answers it. a code the relay does not map used to be dropped
+    // silently, so a battle both clients had already given up on hung with each of them asking forever
+    [Fact]
+    public async Task AnswersAResultCodeItDoesNotRecognise()
+    {
+        var (wsA, _, _) = await ConnectAsync("judge-b", "2001");
+        var (wsB, _, _) = await ConnectAsync("judge-b", "2002");
+
+        static async Task Report(WebSocket ws, int seq)
+        {
+            await SendText(ws, $"451-{seq}[\"msg\",{{\"_placeholder\":true,\"num\":0}}]");
+            await SendBinary(ws, BattleCodec.EncodeMsg("{\"uri\":\"JudgeResult\",\"log\":777}"));
+        }
+
+        // one report is not enough to call it: the other client may still be playing
+        await Report(wsA, 1);
+        await Report(wsB, 2);
+
+        foreach (var ws in new[] { wsA, wsB })
+        {
+            Assert.StartsWith("451-", await ReceiveText(ws));
+            var node = JsonNode.Parse(BattleCodec.DecodeMsg(await ReceiveBinary(ws)));
+            Assert.Equal("BattleFinish", node?["uri"]?.GetValue<string>());
+        }
+    }
 }

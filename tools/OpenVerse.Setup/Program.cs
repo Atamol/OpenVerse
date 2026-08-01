@@ -9,17 +9,24 @@ using OpenVerse.Common;
 const string LatestHash = "0b82bbcc494650f0079f5142636b6d3fc8770e8cae5a52f08d2aaeea057d912f";
 
 // run before connecting the client to OpenVerse, which overwrites the card_master cache
+CmdHelper.RegisterArg(Args.help, new CommandExplanation(
+    "print this usage text", "help", "-h")
+{ TakeValue = false });
+CmdHelper.RegisterArg(Args.client, new CommandExplanation(
+    "the Shadowverse client's data folder to read the card_master cache from; default: %UserProfile%\\AppData\\LocalLow\\Cygames\\Shadowverse", "client"));
+CmdHelper.RegisterArg(Args.@out, new CommandExplanation(
+    "where to write the extracted card_master and bundled data files; default: the folder next to this executable", "out"));
 
-static string? Arg(string[] a, string name)
+if (CmdHelper.HasFlag(args, Args.help))
 {
-    var i = Array.IndexOf(a, name);
-    return i >= 0 && i + 1 < a.Length ? a[i + 1] : null;
+    Console.WriteLine(CmdHelper.GenerateMan());
+    return 0;
 }
 
 var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-var clientData = Arg(args, "--client")
+var clientData = CmdHelper.ReadArg(args, Args.client)
     ?? Path.Combine(userProfile, "AppData", "LocalLow", "Cygames", "Shadowverse");
-var outDir = Arg(args, "--out") ?? Path.Combine(AppContext.BaseDirectory, "data");
+var outDir = CmdHelper.ReadArg(args, Args.@out) ?? Path.Combine(AppContext.BaseDirectory, "data");
 
 try { Console.OutputEncoding = Encoding.UTF8; } catch { }
 Console.WriteLine($"client: {clientData}");
@@ -98,3 +105,5 @@ static void Notify(string title, string body, uint icon)
 
 [DllImport("user32.dll", CharSet = CharSet.Unicode)]
 static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+
+enum Args { help, client, @out }

@@ -77,6 +77,15 @@ public class RelayCostPathTests
             if (body["knownList"] is not JsonArray kl || kl.Count == 0 || kl[0] is not JsonObject e0) return null;
             return e0["cost"] is JsonValue v && v.TryGetValue<int>(out var c) ? c : null;
         }
+
+        public bool CostBlind(Session s) =>
+            ((HashSet<string>)GetField(Hub, "_costBlind")!).Contains(s.Id);
+
+        public bool AsksTheEngine(Session s, int idx, int cardId, int? relayCost)
+        {
+            var args = new object?[] { s, idx, cardId, relayCost, 0 };
+            return (bool)M("TryEngineCostAdvice").Invoke(Hub, args)!;
+        }
     }
 
     Rig NewRig(bool withPeer = false)
@@ -118,6 +127,38 @@ public class RelayCostPathTests
         Assert.True(ok, "TryFinalCost declined for a fully-boosted Dimension Shift");
         Assert.Equal(0, cost);
         Assert.Equal(0, pin);
+    }
+
+    // a price the relay proved itself is never handed to the engine: the engine is there for the silence, not to
+    // second-guess arithmetic that already works
+    [Fact]
+    public void NeverOverrulesAPriceTheRelayProved()
+    {
+        if (!File.Exists(Path.Combine(DataDir(), "card_master_full.csv.gz"))) return;
+        var r = NewRig();
+        r.SeedDeck(r.A, (5, Everyday));
+        r.Charge(r.A, ChargeIdxList(new[] { 5 }, isSelf: 1));
+
+        Assert.False(r.AsksTheEngine(r.A, 5, Everyday, relayCost: 2));
+    }
+
+    // the peer subtracts the master base cost from the actor's Pp whenever no cost is stated, so silence on a
+    // discounted card drains it until plays start being refused. the engine is asked for every silence, not just the
+    // group-idx one, and declines here only because no engine is running in this fixture
+    [Fact]
+    public void AsksTheEngineWheneverItHasNoPriceOfItsOwn()
+    {
+        if (!File.Exists(Path.Combine(DataDir(), "card_master_full.csv.gz"))) return;
+        var r = NewRig();
+        r.SeedDeck(r.A, (5, Everyday));
+
+        Assert.False(r.CostBlind(r.A));
+        Assert.False(r.AsksTheEngine(r.A, 5, Everyday, relayCost: null));
+
+        var alter = new JsonObject { ["idx"] = "g1", ["isSelf"] = 1, ["type"] = "add", ["cost"] = "a-2" };
+        r.Charge(r.A, new JsonObject { ["orderList"] = new JsonArray { new JsonObject { ["alter"] = alter } } });
+        Assert.True(r.CostBlind(r.A));
+        Assert.Null(r.PlayPin(r.A, 5));
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using OpenVerse.Common;
 
@@ -74,10 +75,26 @@ public sealed class BattleHub
         return d;
     }
 
+    // handlers are fire-and-forget, so without this two of them interleave at their first await. both sides share the
+    // ledger, the boost table and the peer's playSeq counter, and the peer stocks by playSeq
+    readonly ConcurrentDictionary<string, SemaphoreSlim> _turnstile = new();
+
     public async Task Dispatch(Session s, string uri, JsonNode? payload, int? ackId)
     {
+        var gate = _turnstile.GetOrAdd(s.BattleId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try { await DispatchInOrder(s, uri, payload, ackId); }
+        finally { gate.Release(); }
+    }
+
+    async Task DispatchInOrder(Session s, string uri, JsonNode? payload, int? ackId)
+    {
         var pubSeq = payload?["pubSeq"]?.GetValue<int>() ?? 0;
-        Console.WriteLine($"[{s.Id}] recv {uri} (pubSeq={pubSeq})");
+        // name the card on every action, or a later complaint about "idx 43" cannot be tied to anything
+        var what = uri == "PlayActions" && payload is JsonObject pj && AsInt(pj["playIdx"]) is int px
+            ? $" type={AsInt(pj["type"])} idx={px} card={LedgerFor(s).GetValueOrDefault(px)}"
+            : "";
+        Console.WriteLine($"[{s.Id}] recv {uri} (pubSeq={pubSeq}){what}");
         switch (uri)
         {
             case "InitNetwork":
@@ -280,6 +297,15 @@ public sealed class BattleHub
         _idxSeed[second.Id] = sB;
         _rng[first.Id] = new XorShift(sA);
         _rng[second.Id] = new XorShift(sB);
+        // Matched is the one point per battle where a rematch is distinguishable from a reconnect, so roll draw order
+        // here. keyed by room and player rather than by session so a mid-battle reconnect keeps the deck it was dealt
+        foreach (var p in new[] { first, second })
+        {
+            _deckSeed[DeckKey(p)] = RollSeed();
+            _shuffled.Remove(p.Id);
+        }
+        // shared between the pair, unlike the deck seeds: it drives the StableRandom stream both clients draw from
+        _stableSeed[s.BattleId] = Random.Shared.Next();
         await first.SendMsg("Matched", MatchedPayload(first, second, s.BattleId, turnState: 0));
         await second.SendMsg("Matched", MatchedPayload(second, first, s.BattleId, turnState: 1));
     }
@@ -411,9 +437,12 @@ public sealed class BattleHub
         UpdateCostState(s, body);
         TrackVitals(s, body);
         ApplyDeckMoves(s, body);
+        NoteExtraTurn(s, body);
         MaybeFlush(s, uri);
         await peer.SendMsg(uri, body);
         await MaybeFinalizeNaturalFinish(s);
+        // the winner closes the killing action with this, which is the earliest point the loser has seen it play out
+        if (uri is "TurnEndFinal") await FlushVerdict(s.BattleId, "action closed");
         RecordShape(uri, body);
         // after the send, never before: the shadow is an observer and the peer should not wait on it
         Engine.ShadowBridge.Observe(uri, body, s.Id == _shadowPlayerId, l => Console.WriteLine($"[{s.Id}] {l}"));
@@ -427,10 +456,16 @@ public sealed class BattleHub
         var first = _firstPlayer.TryGetValue(a.BattleId, out var f) ? f : a;
         var second = first == a ? b : a;
         _shadowPlayerId = first.Id;
-        Engine.ShadowBridge.Begin(_idxSeed.GetValueOrDefault(first.Id, 0), true,
+        // the shadow's StableRandom has to be the stream the two clients draw from, not a deck seed: every answer it
+        // gives about a random effect is computed from it
+        Engine.ShadowBridge.Begin(_stableSeed.GetValueOrDefault(a.BattleId, 12345), true,
             ShuffledDeckFor(first), ShuffledDeckFor(second),
             OpeningHandIdx(first), OpeningHandIdx(second),
             l => Console.WriteLine($"[{first.Id}] {l}"));
+        // the clients reshuffle a card's deck slot when it goes back, off idxChangeSeed, and the shadow never sees the
+        // Deal that carries it. ShadowMatch.SetDeckMirror installs one, but doing so measurably worsens the only
+        // end-to-end check there is (ShadowCostFidelityTests goes 3 charges short), so leave it off until a capture
+        // shows which way round is in step with the players
     }
 
     // the post-mulligan opening hand: deck slot pos+1 for each of the three opening positions, or its redraw
@@ -698,21 +733,33 @@ public sealed class BattleHub
     {
         if (uri != "PlayActions" || body["type"]?.GetValue<int>() is not (PlayHand or PlayHandSelect or Fusion)) return;
         if (body["playIdx"]?.GetValue<int>() is not int pIdx) return;
-        if (!LedgerFor(s).TryGetValue(pIdx, out var cardId)) return;
+        if (!LedgerFor(s).TryGetValue(pIdx, out var cardId))
+        {
+            // a card that entered hand during the match has no deck slot, and the actor sends cardId 0 for anything the
+            // peer cannot see, so the ledger never learns it. declining here drops the whole play on the peer, so ask
+            // the engine, which has been playing the same match
+            if (!Engine.ShadowBridge.TryCardIdOf(s.Id == _shadowPlayerId, pIdx, out cardId) || cardId == 0) return;
+            Console.WriteLine($"[{s.Id}] play idx={pIdx}: engine named {cardId} (ledger had nothing)");
+        }
         var entry = new JsonObject { ["idx"] = pIdx, ["cardId"] = cardId, ["isSelf"] = 0, ["is_open"] = 1 };
-        // without a cost the peer prices this at the master base cost and over-deducts the opponent's Pp until it starts
-        // refusing plays outright. state the actor's post-modifier Cost, but NOT the fixed-use/accelerate price: the
-        // receive check gates accelerate on CalcFixedUseCost >= Cost, so pinning that would reject every accelerate play
+        // state the actor's post-modifier Cost, but NOT the fixed-use/accelerate price: the receive check gates
+        // accelerate on CalcFixedUseCost >= Cost, so pinning that would reject every accelerate play
         int? relayCost = TryFinalCost(s, pIdx, cardId, out var finalCost) ? finalCost : null;
-        // the spellboost discount is the one price the actor never sends, so the relay reconstructs it from the master
-        // and goes silent when it cannot prove the value. above Observe the engine answers with the real cost instead;
-        // at Observe it only logs where the two disagree, the evidence for enabling it
-        if (Engine.ShadowBridge.Role >= Engine.ShadowBridge.EngineRole.AdviseCost
-            && Engine.ShadowBridge.TryCostOf(s.Id == _shadowPlayerId, pIdx, out var live))
-            relayCost = live;
+        if (TryEngineCostAdvice(s, pIdx, cardId, relayCost, out var advised)) relayCost = advised;
         else
-            Engine.ShadowBridge.CompareCost(s.Id == _shadowPlayerId, pIdx, relayCost, l => Console.WriteLine($"[{s.Id}] {l}"));
+            Engine.ShadowBridge.CompareCost(s.Id == _shadowPlayerId, pIdx, relayCost,
+                l => Console.WriteLine($"[{s.Id}] {l} (card {cardId})"));
+        // an absent cost is not "no opinion": ReplaceReceivedCard only adds a CostSetModifier when one is stated, so the
+        // peer bills the printed cost, drains the actor's Pp and starts refusing plays. every board desync so far
+        // started there
         if (relayCost is int c) entry["cost"] = c;
+        else if (_cardCosts.TryGetValue(cardId, out var known) && known.BaseCost > 0)
+            Console.WriteLine($"[{s.Id}] cost idx={pIdx} card={cardId}: NOT STATED, the peer will charge {known.BaseCost}");
+        // the peer throws its face-down placeholder away and rebuilds the card from cardId, so it starts at charge 0
+        // (CardDataModel.Spellboost defaults to -1, which SetSpellChargeCount ignores) and every skill reading the
+        // count then behaves differently on the two machines
+        if (!_costBlind.Contains(s.Id) && BoostFor(s).GetValueOrDefault(pIdx) is var charges && charges > 0)
+            entry["spellboost"] = charges;
         // the highlander bit rides this same entry: the peer reads it as a global Any(c => c.IsHighlander) over
         // knownList. never add activate/count/callCount/param alongside it - that reroutes the whole entry into
         // SkillConditionCheckList, out of knownList, and the bit becomes invisible
@@ -814,6 +861,12 @@ public sealed class BattleHub
     // the peer drops orderList wholesale, so every cost change the actor ALREADY RESOLVED (alter.cost carries a concrete
     // delta - the actor evaluates the formula itself) and every spellboost delta die on the floor. mirror both per idx so
     // InjectKnownCard can state the price the real server used to state
+    // going blind is permanent for the match and silently drops every later price to the peer, so say why the first time
+    void GoCostBlind(Session s, string why)
+    {
+        if (_costBlind.Add(s.Id)) Console.WriteLine($"[{s.Id}] cost: blind for the rest of the match ({why})");
+    }
+
     void UpdateCostState(Session s, JsonObject body)
     {
         if (body["orderList"] is not JsonArray ol) return;
@@ -829,7 +882,7 @@ public sealed class BattleHub
             // a group idx ("gN") is a filter spec the real server evaluated against the board. with no board a missed
             // modifier would turn a later emitted cost into a WRONG absolute pin - worse than saying nothing - so stop
             // pricing this player for the rest of the match
-            if (AsStr(e["idx"]) is not null) { _costBlind.Add(owner.Id); continue; }
+            if (AsStr(e["idx"]) is not null) { GoCostBlind(owner, $"group idx {AsStr(e["idx"])}"); continue; }
             foreach (var ix in ReadIdxList(e["idx"]))
             {
                 if (bd is { } b)
@@ -840,7 +893,7 @@ public sealed class BattleHub
                     if (add <= 0) continue;
                     BoostFor(owner)[ix] = cur + add;
                     if (!LedgerFor(owner).TryGetValue(ix, out var bcid) || !_cardCosts.TryGetValue(bcid, out var bcc))
-                    { _costBlind.Add(owner.Id); continue; }
+                    { GoCostBlind(owner, $"boosted idx {ix} has no known card"); continue; }
                     if (bcc.SpellboostStep > 0) ModList(owner, ix).Add(new CostMod(CostOp.Add, -add * bcc.SpellboostStep));
                 }
                 if (cd is { } c)
@@ -850,7 +903,7 @@ public sealed class BattleHub
                         'a' => CostOp.Add, 's' => CostOp.Set, 'd' => CostOp.HalfUp, 'D' => CostOp.HalfDown,
                         _ => (CostOp?)null,
                     };
-                    if (op is null) { _costBlind.Add(owner.Id); continue; }
+                    if (op is null) { GoCostBlind(owner, $"boosted idx {ix} has no known card"); continue; }
                     var mod = new CostMod(op.Value, c.Val);
                     if (AsStr(e["type"]) == "del") ModList(owner, ix).Remove(mod);
                     else
@@ -863,6 +916,23 @@ public sealed class BattleHub
                 }
             }
         }
+    }
+
+    // asked for every play the relay cannot price itself, since silence bills the peer the printed cost. an answer that
+    // matches the base costs nothing, so there is no reason to hold back
+    bool TryEngineCostAdvice(Session s, int idx, int cardId, int? relayCost, out int cost)
+    {
+        cost = 0;
+        if (relayCost is not null) return false;
+        if (Engine.ShadowBridge.Role < Engine.ShadowBridge.EngineRole.AdviseCost) return false;
+        if (!Engine.ShadowBridge.TryCostOf(s.Id == _shadowPlayerId, idx, out var live)) return false;
+        // a discount can only take a cost down, so a value outside that window is shadow drift and not a price
+        if (!_cardCosts.TryGetValue(cardId, out var cc) || live < 0 || live > cc.BaseCost) return false;
+        if (live != cc.BaseCost)
+            Console.WriteLine($"[{s.Id}] cost idx={idx} card={cardId}: engine says {live}, base {cc.BaseCost}"
+                            + $"{(_costBlind.Contains(s.Id) ? " (relay blind)" : "")}");
+        cost = live;
+        return true;
     }
 
     // mirror BattleCardBase.Cost: fold the non-half modifiers, then the halves, then clamp at 0. false = say nothing,
@@ -949,21 +1019,60 @@ public sealed class BattleHub
     // turn handoff: a client emits Judge only when it is NOT its turn, reacting to the opponent's turn-end. echoing it
     // back (turnState 0) runs the sender's JudgeOperation -> ControlTurnStartPlayer, handing it the turn. the owner guard
     // keeps the handoff to once per turn since the client sends Judge for both the peer's TurnEnd and TurnEndFinal
+    // an extra turn is granted by the play itself, and nothing marks the Judge that follows
+    readonly Dictionary<string, int> _extraTurns = new();
+
+    void NoteExtraTurn(Session s, JsonObject body)
+    {
+        if (body["orderList"] is not JsonArray ol) return;
+        foreach (var el in ol)
+        {
+            if (el is not JsonObject eo || eo["exTurn"] is not JsonObject ex) continue;
+            if (AsInt(ex["count"]) is not int n || n <= 0) continue;
+            // isSelf is actor-relative, so 1 means the player who cast it takes the turn
+            var owner = (AsInt(ex["isSelf"]) ?? 1) == 1 ? s : _sessions.Peer(s);
+            if (owner is null) continue;
+            _extraTurns[owner.Id] = _extraTurns.GetValueOrDefault(owner.Id) + n;
+            Console.WriteLine($"[{owner.Id}] extra turn granted (x{n})");
+        }
+    }
+
+    // normally the sender, since a client only emits Judge when it is not its turn. an extra turn inverts that: the
+    // caster ends its turn like any other, so the OPPONENT emits the Judge and the turn has to go back to the caster.
+    // echoing to the sender instead leaves the caster with a greyed-out end-turn button. null = a duplicate to drop
+    Session? TurnGoesTo(Session s)
+    {
+        var peer = _sessions.Peer(s);
+        if (peer is not null && _extraTurns.GetValueOrDefault(peer.Id) is var owed && owed > 0)
+        {
+            _extraTurns[peer.Id] = owed - 1;
+            Console.WriteLine($"[{peer.Id}] extra turn taken ({owed - 1} left)");
+            return peer;
+        }
+        if (!_turnOwner.TryGetValue(s.BattleId, out var owner) || owner != s) return s;
+        // the client emits Judge for both the peer's TurnEnd and its TurnEndFinal, so the second one is a duplicate
+        var mine = _extraTurns.GetValueOrDefault(s.Id);
+        if (mine <= 0) return null;
+        _extraTurns[s.Id] = mine - 1;
+        Console.WriteLine($"[{s.Id}] extra turn taken ({mine - 1} left)");
+        return s;
+    }
+
     async Task HandleJudge(Session s, JsonNode? payload)
     {
-        if (_turnOwner.TryGetValue(s.BattleId, out var owner) && owner == s)
+        if (TurnGoesTo(s) is not { } taker)
         {
             Console.WriteLine($"[{s.Id}] Judge ignored (already turn owner)");
             return;
         }
-        Console.WriteLine($"[{s.Id}] turn handoff -> {s.Id} (battle {s.BattleId})");
-        _turnOwner[s.BattleId] = s;
+        Console.WriteLine($"[{s.Id}] turn handoff -> {taker.Id} (battle {s.BattleId})");
+        _turnOwner[s.BattleId] = taker;
         var body = new JsonObject { ["turnState"] = 0 };
         if (payload is JsonObject po)
             foreach (var (k, v) in po)
                 if (k is not ("uri" or "pubSeq" or "cat" or "try" or "viewerId" or "uuid" or "bid" or "playSeq" or "turnState"))
                     body[k] = v?.DeepClone();
-        await s.SendMsg("Judge", body);
+        await taker.SendMsg("Judge", body);
     }
 
     static object OpponentEnterPayload(Session visitor) => new
@@ -994,11 +1103,27 @@ public sealed class BattleHub
     // RESULT_CODE is SELF-relative: RetireWin means "you win, they retired". (JudgeResultReceive passes a
     // BATTLE_RESULT_TYPE to SettingResultUI_SpecialResultTypeText, but that only picks the flavour text - it is not
     // the recipient's outcome, so the codes are NOT inverted.)
+    readonly HashSet<string> _reported = new();
+
     async Task FinalizeFromReport(Session s, int log)
     {
         var (rep, pr) = DecideResult(log);
-        if (rep == 0) return;
-        await Finalize(s, rep, pr);
+        if (rep != 0) { await Finalize(s, rep, pr); return; }
+
+        // the client only sends this once it has decided the battle is over, and repeats it until a BattleFinish
+        // answers. dropping an unrecognised code leaves both clients doing that forever, which is worse than being
+        // wrong about who won, so once BOTH have reported, answer from the life the relay tracked
+        _reported.Add(s.Id);
+        var peer = _sessions.Peer(s);
+        Console.WriteLine($"[{s.Id}] JudgeResult log={log} is not a result the relay maps"
+                        + $"{(peer is not null && _reported.Contains(peer.Id) ? ", both sides have reported" : "")}");
+        if (peer is null || !_reported.Contains(peer.Id) || _finished.GetValueOrDefault(s.BattleId)) return;
+
+        var (mine, theirs) = (VitalsFor(s).Life, VitalsFor(peer).Life);
+        Console.WriteLine($"[{s.Id}] deciding it from life {mine} vs {theirs}");
+        var owner = _turnOwner.GetValueOrDefault(s.BattleId);
+        if (mine != theirs) await Finalize(s, mine < theirs ? 102 : 101, mine < theirs ? 101 : 102);
+        else await Finalize(s, owner == s ? 102 : 101, owner == s ? 101 : 102);
     }
 
     // (reporterCode, peerCode); (0,0) means "not an adjudicable end here, do nothing". reporter of a neutral life/deckout
@@ -1057,16 +1182,49 @@ public sealed class BattleHub
         bool pDead = VitalsFor(peer).Life <= 0;
         if (!sDead && !pDead) return;
         // RESULT_CODE is self-relative: the dead side receives LifeLose(102) and displays "lose", the survivor LifeWin(101)
-        if (sDead && !pDead) await Finalize(s, 102, 101);       // s's leader died -> s loses
-        else if (pDead && !sDead) await Finalize(s, 101, 102);  // peer's leader died -> s wins
+        if (sDead && !pDead) HoldVerdict(s, 102, 101);       // s's leader died -> s loses
+        else if (pDead && !sDead) HoldVerdict(s, 101, 102);  // peer's leader died -> s wins
         else
         {
             // both leaders dead in one action: the active player (turn owner) loses, matching the engine's
             // JudgeCurrentFinishStatus IsSelfTurn tie-break
             var owner = _turnOwner.GetValueOrDefault(s.BattleId);
-            if (owner == s) await Finalize(s, 102, 101);
-            else await Finalize(s, 101, 102);
+            HoldVerdict(s, owner == s ? 102 : 101, owner == s ? 101 : 102);
         }
+        await Task.CompletedTask;
+    }
+
+    readonly Dictionary<string, (Session Reporter, int ReporterCode, int PeerCode)> _pendingFinish = new();
+    static readonly TimeSpan LethalGrace = TimeSpan.FromSeconds(6);
+
+    // the killing blow still has to play out. sending BattleFinish from the same handler that relayed it cuts straight
+    // to the result screen, so the loser never sees the attack that killed them (the winner's TurnEndFinal does not
+    // even reach the relay until after that). the timer is there so a winner that never sends one cannot leave the
+    // match undecided
+    void HoldVerdict(Session s, int reporterCode, int peerCode)
+    {
+        if (_pendingFinish.ContainsKey(s.BattleId)) return;
+        _pendingFinish[s.BattleId] = (s, reporterCode, peerCode);
+        Console.WriteLine($"[{s.Id}] lethal seen, holding the result until the action closes");
+        var battleId = s.BattleId;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(LethalGrace);
+            await FlushVerdict(battleId, "grace elapsed");
+        });
+    }
+
+    async Task FlushVerdict(string battleId, string why)
+    {
+        (Session Reporter, int ReporterCode, int PeerCode) v;
+        lock (_finishLock)
+        {
+            if (!_pendingFinish.TryGetValue(battleId, out v)) return;
+            _pendingFinish.Remove(battleId);
+        }
+        Console.WriteLine($"[{v.Reporter.Id}] result decided ({why})");
+        try { await Finalize(v.Reporter, v.ReporterCode, v.PeerCode); }
+        catch (Exception e) { Console.WriteLine($"[{v.Reporter.Id}] finalize failed: {e.Message}"); }
     }
 
     // the comparison the shadow exists for: relay result (hand-written) vs engine result (read off the board). codes
@@ -1175,8 +1333,16 @@ public sealed class BattleHub
 
     // stable per (room, viewer) so a re-call inside the match reshuffles identically. string.GetHashCode is randomized
     // per run, so fold the chars by hand for a deterministic seed
-    static int DeckSeed(Session s)
+    readonly Dictionary<string, int> _deckSeed = new();   // (room, viewer) -> draw order, rolled fresh at each Matched
+    readonly Dictionary<string, int> _stableSeed = new(); // room -> the StableRandom stream both players share
+
+    static string DeckKey(Session s) => s.BattleId + " " + s.ViewerId;
+
+    // Matched rolls this. the fallback only covers a deck asked for before Matched, and folds the chars by hand because
+    // string.GetHashCode is randomized per run and the two players must not disagree about a deck
+    int DeckSeed(Session s)
     {
+        if (_deckSeed.TryGetValue(DeckKey(s), out var rolled)) return rolled;
         int h = 17;
         foreach (var ch in s.BattleId) h = h * 31 + ch;
         foreach (var ch in s.ViewerId) h = h * 31 + ch;
@@ -1227,7 +1393,10 @@ public sealed class BattleHub
             // the client reads its own selfInfo.fieldId as the stage (NetworkBattleManagerBase.CreateBackgroundId), so both
             // players carry the same per-battle roll to land on the same map
             fieldId = _fieldId.TryGetValue(s.BattleId, out var fid) ? fid : 1,
-            seed = 12345,
+            // both players seed one System.Random from this and every random effect draws from it in step, so it has to
+            // be the same number for the pair and a different one each battle. System.Random takes Math.Abs of it on the
+            // client's runtime, so keep it non-negative
+            seed = _stableSeed.TryGetValue(s.BattleId, out var rs) ? rs : 12345,
             deckCount = d?.CardIds.Length ?? 40,
             oppoDeckCount = DeckFor(peer)?.CardIds.Length ?? 40,
             // GetOpponentSleeveId does Convert.ToInt64(_oppoInfo["sleeveId"]) so a missing field kills the battle-load coroutine

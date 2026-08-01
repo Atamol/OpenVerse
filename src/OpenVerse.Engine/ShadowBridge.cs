@@ -18,7 +18,7 @@ public static class ShadowBridge
     public static EngineRole Role { get; private set; } = EngineRole.Observe;
 
     static Type? _host;
-    static MethodInfo? _boot, _create, _ingest, _verdict, _state, _close, _costOf, _cardIdOf, _answerConditions;
+    static MethodInfo? _boot, _create, _ingest, _verdict, _state, _close, _costOf, _cardIdOf, _answerConditions, _setDeckMirror;
     static readonly BlockingCollection<Action> _work = new(boundedCapacity: 256);
     static Thread? _worker;
 
@@ -49,6 +49,7 @@ public static class ShadowBridge
             _costOf = _host.GetMethod("CostOf", Pub);
             _cardIdOf = _host.GetMethod("CardIdOf", Pub);
             _answerConditions = _host.GetMethod("AnswerConditions", Pub);
+            _setDeckMirror = _host.GetMethod("SetDeckMirror", Pub);
             if (_boot is null || _create is null || _ingest is null || _verdict is null || _state is null
                 || _close is null)
             {
@@ -109,7 +110,8 @@ public static class ShadowBridge
     // playerHand/enemyHand are the post-mulligan opening-hand indices: the shadow never sees the Deal/Swap, so without
     // them its board never leaves the deck. one match at a time
     public static void Begin(int seed, bool playerFirst, int[] playerDeck, int[] enemyDeck,
-                             int[] playerHand, int[] enemyHand, Action<string> log)
+                             int[] playerHand, int[] enemyHand, Action<string> log,
+                             int selfIdxSeed = -1, int oppoIdxSeed = -1)
     {
         Post(() =>
         {
@@ -118,6 +120,10 @@ public static class ShadowBridge
             log(_handle > 0
                 ? $"shadow: observing, {(playerFirst ? "player" : "peer")} first"
                 : $"shadow: not started ({HostError()})");
+            // the deck mirror the clients get from the Deal the shadow never sees
+            if (_handle > 0 && _setDeckMirror is not null && selfIdxSeed != -1
+                && _setDeckMirror.Invoke(null, [_handle, selfIdxSeed, oppoIdxSeed]) is not true)
+                log($"shadow: deck mirror not installed ({HostError()})");
         });
     }
 

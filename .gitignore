@@ -5,11 +5,8 @@ OpenVerse.zip
 
 launcher.log
 
-graphify-out/
-
 ref/
 src/OpenVerse.Api/certs/
-
 
 src/OpenVerse.Api/data/*
 !src/OpenVerse.Api/data/practice_info.json
@@ -20,8 +17,8 @@ src/OpenVerse.Api/data/*
 analysis/
 tests/Shadowverse/
 
-.vscode/
 .vs/
+.vscode/
 .idea/
 *.user
 
@@ -29,3 +26,4 @@ Thumbs.db
 .DS_Store
 
 src/OpenVerse.Engine/lib/
+graphify-out/
