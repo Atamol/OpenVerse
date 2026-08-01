@@ -20,6 +20,24 @@ public static class HeadlessFix
             if (f != null && f.GetValue(mgr) == null) f.SetValue(mgr, Activator.CreateInstance(goT));
         }
 
+        // ActionProcessor.PlayCard clears the side log on every transform play (accelerate / crystallize / choice), and
+        // only the battle scene ever assigns this. it is a MonoBehaviour, so build it uninitialized and give it the
+        // lists RemoveAllLog walks
+        var slcF = bmb.GetField("PSideLogControl", Any);
+        if (slcF != null && slcF.GetValue(mgr) == null)
+        {
+            var slc = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(slcF.FieldType);
+            foreach (var f in slcF.FieldType.GetFields(BindingFlags.NonPublic | BindingFlags.Instance))
+            {
+                if (!f.FieldType.IsGenericType) continue;
+                var def = f.FieldType.GetGenericTypeDefinition();
+                if (def == typeof(System.Collections.Generic.IList<>) || def == typeof(System.Collections.Generic.List<>))
+                    f.SetValue(slc, Activator.CreateInstance(
+                        typeof(System.Collections.Generic.List<>).MakeGenericType(f.FieldType.GetGenericArguments())));
+            }
+            slcF.SetValue(mgr, slc);
+        }
+
         // Skill_evolve/Skill_metamorphose call BattleLogManager.GetInstance() to append a log line. a blank instance
         // satisfies the call, and its own null guards keep it from touching any UI
         var blm = Headless.T("Wizard.Battle.UI.BattleLogManager") ?? Headless.T("BattleLogManager");

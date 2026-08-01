@@ -50,6 +50,23 @@ namespace OpenVerse.EngineHost
             catch (Exception e) { LastError = Headless.Root(e); return -1; }
         }
 
+        // a card put back into a deck gets a fresh slot, drawn from a XorShift the client seeds off idxChangeSeed in the
+        // Deal it receives. the shadow is dealt its opening hand directly and never sees that Deal, so without this it
+        // skips the reshuffle both clients perform. enrolment is also gated on IsMulliganEnd, which only the mulligan
+        // flow sets
+        public static bool SetDeckMirror(int handle, int selfIdxSeed, int oppoIdxSeed)
+        {
+            ShadowBattle b;
+            if (!_live.TryGetValue(handle, out b)) return false;
+            try
+            {
+                b.Mgr.CreateXorShift(selfIdxSeed, oppoIdxSeed);
+                b.Mgr.IsMulliganEnd = true;
+                return true;
+            }
+            catch (Exception e) { LastError = Headless.Root(e); return false; }
+        }
+
         /// <returns>"" when the engine applied it, otherwise why it did not</returns>
         public static string Ingest(int handle, string uri, Dictionary<string, object> body, bool isPlayer)
         {
@@ -183,8 +200,12 @@ namespace OpenVerse.EngineHost
             mgr.VfxMgr.RegisterSequentialVfx(p.DrawCards(draw, new SkillProcessor(), isOpen: false, isMulligan: true).Vfx);
         }
 
+        bool _sawTurnStart;
+
         public string Ingest(string uri, Dictionary<string, object> body, bool isPlayer)
         {
+            if (uri == "TurnStart") _sawTurnStart = true;
+
             NetworkBattleDefine.NetworkBattleURI parsed;
             if (!Enum.TryParse(uri, out parsed)) return "unknown uri " + uri;
 
@@ -234,6 +255,7 @@ namespace OpenVerse.EngineHost
         // came from
         public int CardIdOf(bool isSelfPlayer, int idx)
         {
+            if (!Trusted) return 0;
             BattlePlayerBase side = isSelfPlayer ? (BattlePlayerBase)Mgr.BattlePlayer : Mgr.BattleEnemy;
             foreach (var zone in new IEnumerable<BattleCardBase>[]
                      { side.HandCardList, side.DeckCardList, side.CemeteryList, side.BanishList, side.InPlayCards })
@@ -268,8 +290,14 @@ namespace OpenVerse.EngineHost
             body["targetList"] = targetList;
         }
 
+        // without the turn messages the shadow is not playing the same match at all, so it has nothing to say. its Pp is
+        // deliberately not part of this: a hand card's cost comes from its own modifiers, and a shadow that overspent
+        // still knows what its cards cost. the caller clamps anything it takes to the master base cost
+        bool Trusted => _sawTurnStart;
+
         public int CostOf(bool isSelfPlayer, int idx)
         {
+            if (!Trusted) return -1;
             BattlePlayerBase side = isSelfPlayer ? (BattlePlayerBase)Mgr.BattlePlayer : Mgr.BattleEnemy;
             foreach (var c in side.HandCardList)
                 if (c.Index == idx) return c.Cost;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Wizard;
 using Wizard.Battle;
 using Wizard.Battle.View.Vfx;
@@ -129,6 +130,20 @@ public class ShadowMgr : NetworkBattleManagerBase
     }
 
     public override bool IsVirtualBattle => true;
+
+    // the stock body clones a scene prefab, so every choice / accelerate / crystallize play throws headless and the
+    // token is never minted. the throw is swallowed by the vfx player, so it costs a spellboost charge and a later
+    // attack on the missing card rather than showing up as an error. this is the client's own view-less construction
+    protected override BattleCardBase CreateTransformCardWithGameObject(int cardId, BattleCardBase originalCard, bool isPlayer, bool isChoice)
+    {
+        var hit = TransformCardList.FirstOrDefault(c => c.CardId == cardId && c.IsPlayer == isPlayer
+                                                        && (isChoice || c.TransformInfo.OriginalCard == originalCard));
+        if (hit != null) return hit;
+        var prm = CardMaster.GetInstanceForBattle().GetCardParameterFromId(cardId);
+        var made = CreateChoiceCard(cardId, isPlayer, null, prm, GetBattlePlayer(isPlayer));
+        TransformCardList.Add(made);
+        return made;
+    }
 
     protected override BattlePlayer CreateBattlePlayer()
         => new ShadowBattlePlayer(this, _battleCamera, _backGround, CreatePlayerInnerOptionsBuilder());
