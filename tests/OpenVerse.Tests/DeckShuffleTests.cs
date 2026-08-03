@@ -22,6 +22,7 @@ public class DeckShuffleTests
         SetAuto(s, "Id", id);
         SetAuto(s, "BattleId", battleId);
         SetAuto(s, "ViewerId", viewerId);
+        SetAuto(s, "RemoteIp", "");
         sessions.Add(s);
         return s;
     }
@@ -51,10 +52,10 @@ public class DeckShuffleTests
         var seeds = (System.Collections.IDictionary)typeof(BattleHub).GetField("_deckSeed", MF)!.GetValue(hub)!;
         var shuffled = (System.Collections.IDictionary)typeof(BattleHub).GetField("_shuffled", MF)!.GetValue(hub)!;
         var roll = typeof(BattleHub).GetMethod("RollSeed", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var key = typeof(BattleHub).GetMethod("DeckKey", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var key = typeof(BattleHub).GetMethod("DeckKey", MF)!;
         foreach (var p in players)
         {
-            seeds[key.Invoke(null, [p])!] = roll.Invoke(null, null)!;
+            seeds[key.Invoke(hub, [p])!] = roll.Invoke(null, null)!;
             shuffled.Remove(p.Id);
         }
     }
@@ -78,8 +79,23 @@ public class DeckShuffleTests
         StartBattle(hub, a);
         var before = Deck(hub, a);
 
+        // a reconnect is a new socket after the old one closed, so the dead session is gone from the roster first
+        sessions.Remove(a);
         var reconnected = MakeSession(sessions, "sessA-again", "room1", "1001");
         Assert.Equal(before, Deck(hub, reconnected));
+    }
+
+    // the header viewer_id is not distinct: a copied install sends one cached value for both players, so keying the
+    // shuffle on it collided, the second roll overwrote the first and BOTH players were dealt from one order
+    [Fact]
+    public void TwoPlayersSharingACachedViewerIdStillGetTheirOwnOrder()
+    {
+        var hub = NewHub(out var sessions);
+        var a = MakeSession(sessions, "sessA", "room1", "837123942");
+        var b = MakeSession(sessions, "sessB", "room1", "837123942");
+        StartBattle(hub, a, b);
+
+        Assert.NotEqual(Deck(hub, a), Deck(hub, b));
     }
 
     [Fact]
