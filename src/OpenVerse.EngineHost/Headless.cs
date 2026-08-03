@@ -14,7 +14,6 @@ public static class Headless
 
     public static bool Booted { get; private set; }
 
-    /// <param name="cardMasterCsv">the real card master, decompressed (the same data the API serves clients)</param>
     public static void Boot(string cardMasterCsv)
     {
         if (Booted) return;
@@ -26,9 +25,6 @@ public static class Headless
         var data = T("Wizard.Data") ?? T("Data");
         for (int i = 0; i < 3; i++) SeedStatics(data);
 
-        // GameMgr is a plain class, so its real ctor runs. CreateMgrIns can't: SoundMgr dies inside CriWare and InputMgr
-        // touches UnityEngine.Input, so each manager is built individually and the two that throw fall back to a blank
-        // instance. the battle ctor only reaches through them for camera/background wiring
         BuildGameMgr();
         FillManagers();
         LoadCardMaster(cardMasterCsv);
@@ -40,9 +36,6 @@ public static class Headless
         SeedSystemText();
     }
 
-    // SystemText's ctor parses TextAssets out of Resources, so it throws headlessly and Data.SystemText stays null,
-    // yet BattleCardBase.ConvertSkillDescriptionText calls Convert on it for every skill that shows a value in its log
-    // line. build it uninitialized, then give it the field initializer and the two members Convert reads
     static void SeedSystemText()
     {
         var stT = T("Wizard.SystemText");
@@ -67,9 +60,6 @@ public static class Headless
 
     public static int TextDicsSeeded;
 
-    // the localisation dictionaries are declared as IDictionary, so SeedInstance skips them, and are normally filled
-    // from TextAssets in a resource bundle. SkillBase.CallStart reads SkillDescription on every activation, so a null
-    // one takes down the whole rules path. GetText falls back to the key on a miss, so empty is enough
     static void SeedMasterText()
     {
         var masterT = T("Wizard.Master");
@@ -105,14 +95,11 @@ public static class Headless
         Console.WriteLine("  Master text dictionaries seeded: " + TextDicsSeeded);
     }
 
-    // Cute.Toolbox is the framework service locator; the battle only reaches it for asset loading
     static void SeedToolbox()
     {
         var tb = T("Cute.Toolbox");
         foreach (var f in tb.GetFields(BindingFlags.Public | BindingFlags.Static))
         {
-            // reading the field is itself enough to fault: resolving its type loads the declaring assembly, and the
-            // native-plugin ones (CriWare, Steamworks) are not shipped. none of them is a rule
             try
             {
                 if (f.GetValue(null) != null || f.FieldType.IsPrimitive || f.FieldType.IsAbstract || Finalizable(f.FieldType)) continue;
@@ -191,7 +178,6 @@ public static class Headless
         return o;
     }
 
-    // a finalizer means one of those native handles (see Blank); exclude the type from the reflective seeding entirely
     static bool Finalizable(Type t) =>
         t.GetMethod("Finalize", BindingFlags.NonPublic | BindingFlags.Instance)?.DeclaringType != typeof(object);
 
@@ -203,7 +189,6 @@ public static class Headless
 
     public static int CardCount;
 
-    // CreateCardMaster and the instance dictionary are private: the client only ever fills them from a server response
     static void LoadCardMaster(string csv)
     {
         var cmT = T("Wizard.CardMaster");
@@ -250,6 +235,21 @@ public static class Headless
                 Seeded++;
             }
         }
+        SetBattleMode();
+    }
+
+    static void SetBattleMode()
+    {
+        var gm = T("GameMgr");
+        foreach (var (name, value) in new[] { ("IsNetworkBattle", true), ("IsWatchBattle", false), ("IsAINetwork", false) })
+        {
+            var prop = gm.GetProperty(name, Any);
+            var field = gm.GetField(name, Any) ?? gm.GetField("_is" + name.Substring(2), Any);
+            if (prop is { CanWrite: true }) prop.SetValue(GameMgrIns, value);
+            else if (field != null) field.SetValue(GameMgrIns, value);
+            else { Console.WriteLine($"[headless] battle mode flag {name} not found"); continue; }
+            Console.WriteLine($"[headless] {name} = {value}");
+        }
     }
 
     static void FillManagers()
@@ -273,7 +273,6 @@ public static class Headless
         }
     }
 
-    // singletons use a private static instance field plus GetIns(), so construct one directly and install it
     static void ForceSingleton(string typeName)
     {
         var t = T(typeName);

@@ -7,11 +7,6 @@ using Wizard.BattleMgr;
 
 namespace OpenVerse.EngineHost
 {
-    // a passive observer of a live relayed match: the relay replays every battle message into a real headless engine so
-    // its reading of the board can be compared with what the clients did. the relay must never notice it exists, so
-    // every entry point swallows and reports rather than throwing (a wrong observation costs a log line, a thrown one
-    // costs the players their game), and a match that goes wrong is closed, not retried. the surface is flat (handles,
-    // primitives, Dictionary) because the net10 server calls it by reflection and cannot reference net48 types
     public static class ShadowMatch
     {
         const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
@@ -34,7 +29,6 @@ namespace OpenVerse.EngineHost
 
         public static int CardCount => Headless.CardCount;
 
-        /// <returns>a handle, or -1 with LastError set</returns>
         public static int Create(int seed, bool playerFirst, int[] playerDeck, int[] enemyDeck, int[] playerHand, int[] enemyHand)
         {
             try
@@ -117,7 +111,51 @@ namespace OpenVerse.EngineHost
             catch (Exception e) { LastError = Headless.Root(e); return new List<object>(); }
         }
 
-        /// <summary>one line of board state, for comparing against what the clients report</summary>
+        // the fields the wire cannot carry, read off the card object. empty when this board cannot answer
+        public static Dictionary<string, object> Project(int handle, bool isSelfPlayer, int idx)
+        {
+            ShadowBattle b;
+            if (!_live.TryGetValue(handle, out b)) return new Dictionary<string, object>();
+            try { return b.Project(isSelfPlayer, idx); }
+            catch (Exception e) { LastError = Headless.Root(e); return new Dictionary<string, object>(); }
+        }
+
+        // drive this board's OWN play the way its client did: through OperateMgr, not through the receive path. a client
+        // never receives its own action, and the two paths do not draw from StableRandom the same way, so a board fed
+        // its own play as a received message is a spectator of its client rather than a copy of it.
+        // "" on success; any other string means the caller should fall back to the receive path, which is what it did
+        // before this existed
+        public static string PlayByIntent(int handle, int idx, List<object> selectIdxs, List<object> choiceIds)
+        {
+            ShadowBattle b;
+            if (!_live.TryGetValue(handle, out b)) return "no such match";
+            try { return b.PlayByIntent(idx, selectIdxs, choiceIds); }
+            catch (Exception e) { var why = Headless.Root(e); LastError = why; return why; }
+        }
+
+        // the stock client's own verdict on the last message this board took: OperateReceiveChecker.IsOperateReceive,
+        // the test a real client runs before applying anything. "" when there is nothing to report
+        public static string LastVerdict(int handle)
+        {
+            ShadowBattle b;
+            if (!_live.TryGetValue(handle, out b)) return "";
+            try
+            {
+                var v = b.Mgr.CheckerVerdicts;
+                return v.Count == 0 ? "" : (b.Mgr.LastCheckerPassed ? "pass " : "FAIL ") + v[v.Count - 1];
+            }
+            catch (Exception e) { LastError = Headless.Root(e); return ""; }
+        }
+
+        // the shared StableRandom cursor, or -1. spin for a receiver is the actor's cursor delta minus its own
+        public static int RandomCursor(int handle)
+        {
+            ShadowBattle b;
+            if (!_live.TryGetValue(handle, out b)) return -1;
+            try { return b.RandomCursor(); }
+            catch (Exception e) { LastError = Headless.Root(e); return -1; }
+        }
+
         public static string State(int handle)
         {
             ShadowBattle b;
@@ -141,6 +179,7 @@ namespace OpenVerse.EngineHost
         public static ShadowBattle Start(int seed, bool playerFirst, int[] playerDeck, int[] enemyDeck,
                                          int[] playerHand, int[] enemyHand)
         {
+            ShadowReconciler.Reset();
             UnityEngine.Random.InitState(seed);
             var mgr = new ShadowMgr(new HeadlessContentsCreator(seed));
 
@@ -189,8 +228,6 @@ namespace OpenVerse.EngineHost
             p.BattleStartDeckCardList = new List<BattleCardBase>(p.DeckCardList);
         }
 
-        // draw the opening-hand cards the relay named, by their stable deck Index, through the engine's own DrawCards so
-        // IsInHand and the deck list stay consistent. a later play references them by index, so they must be in hand first
         static void DealOpeningHand(BattleManagerBase mgr, BattlePlayerBase p, int[] handIdx)
         {
             if (handIdx == null || handIdx.Length == 0) return;
@@ -251,8 +288,6 @@ namespace OpenVerse.EngineHost
             }
         }
 
-        // every zone, not just the hand: the whole point is that the caller should not have to know where the card
-        // came from
         public int CardIdOf(bool isSelfPlayer, int idx)
         {
             if (!Trusted) return 0;
@@ -302,6 +337,97 @@ namespace OpenVerse.EngineHost
             foreach (var c in side.HandCardList)
                 if (c.Index == idx) return c.Cost;
             return -1;
+        }
+
+        public string PlayByIntent(int idx, List<object> selectIdxs, List<object> choiceIds)
+        {
+            if (!Trusted) return "not trusted yet";
+            var hand = Mgr.BattlePlayer.HandCardList;
+            BattleCardBase card = null;
+            foreach (var c in hand) if (c != null && c.Index == idx) { card = c; break; }
+            if (card == null) return "idx " + idx + " is not in this board's hand";
+
+            var selected = new List<BattleCardBase>();
+            if (selectIdxs != null)
+                foreach (var o in selectIdxs)
+                {
+                    var want = Convert.ToInt32(o);
+                    var found = FindAnywhere(want);
+                    if (found == null) return "target idx " + want + " is not on this board";
+                    selected.Add(found);
+                }
+
+            List<int> choices = null;
+            if (choiceIds != null && choiceIds.Count > 0)
+            {
+                choices = new List<int>();
+                foreach (var o in choiceIds) choices.Add(Convert.ToInt32(o));
+            }
+
+            Mgr.OperateMgr.InitSetCard(card, true);
+            Mgr.OperateMgr.PlayCard(card, true, selected, false, choices);
+            return "";
+        }
+
+        BattleCardBase FindAnywhere(int idx)
+        {
+            foreach (BattlePlayerBase side in new BattlePlayerBase[] { Mgr.BattlePlayer, Mgr.BattleEnemy })
+                foreach (var zone in new IEnumerable<BattleCardBase>[]
+                         { side.InPlayCards, side.HandCardList, side.DeckCardList, side.CemeteryList, side.BanishList })
+                {
+                    if (zone == null) continue;
+                    foreach (var c in zone) if (c != null && c.Index == idx) return c;
+                }
+            return null;
+        }
+
+        public int RandomCursor()
+        {
+            var f = typeof(BattleManagerBase).GetField("stableRandomCount",
+                BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Public);
+            return f == null ? -1 : Convert.ToInt32(f.GetValue(Mgr));
+        }
+
+        public Dictionary<string, object> Project(bool isSelfPlayer, int idx)
+        {
+            var r = new Dictionary<string, object>();
+            if (!Trusted) return r;
+            BattlePlayerBase side = isSelfPlayer ? (BattlePlayerBase)Mgr.BattlePlayer : Mgr.BattleEnemy;
+            foreach (var zone in new IEnumerable<BattleCardBase>[]
+                     { side.HandCardList, side.DeckCardList, side.CemeteryList, side.BanishList, side.InPlayCards })
+            {
+                if (zone == null) continue;
+                foreach (var c in zone)
+                {
+                    if (c == null || c.Index != idx) continue;
+                    r["idx"] = c.Index;
+                    r["cardId"] = c.CardId;
+                    // the engine's own fold over every CostAdd/CostSet/CostHalf modifier, which is the number the peer
+                    // has no way to compute. NOT the fixed-use or accelerate price: the peer recomputes those itself
+                    r["cost"] = c.Cost;
+                    r["atk"] = c.Atk;
+                    r["life"] = c.Life;
+                    Add(r, c, "spellboost", "SpellChargeCount");
+                    Add(r, c, "chant", "AddChantCount");
+                    Add(r, c, "tribe", "Tribe");
+                    Add(r, c, "clan", "Clan");
+                    return r;
+                }
+            }
+            return r;
+        }
+
+        // the properties differ between builds, so a missing one is a key the caller does not get rather than a throw
+        static void Add(Dictionary<string, object> into, BattleCardBase c, string key, string prop)
+        {
+            var p = c.GetType().GetProperty(prop, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (p == null) return;
+            try
+            {
+                var v = p.GetValue(c);
+                if (v != null) into[key] = Convert.ToInt32(v);
+            }
+            catch { }
         }
 
         public string State()

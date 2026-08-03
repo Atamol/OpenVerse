@@ -1,267 +1,96 @@
-using System.Collections.Concurrent;
-using System.Reflection;
 using System.Text.Json.Nodes;
 
 namespace OpenVerse.Engine;
 
-// a headless copy of the client's engine, run beside a live match to observe only, so nothing it computes reaches a
-// player. net48, reached by reflection (EngineHost is not referenceable from net10). work runs on one background
-// thread with a bounded queue that drops on overflow rather than blocking the relay
 public static class ShadowBridge
 {
-    const BindingFlags Pub = BindingFlags.Public | BindingFlags.Static;
-
     // how far the engine is trusted. everything above Observe is opt-in via OPENVERSE_ENGINE_ROLE because it changes
     // what players see; Observe reaches no client
     public enum EngineRole { Off, Observe, AdviseCost, AnswerBlanks, DecideResult }
 
     public static EngineRole Role { get; private set; } = EngineRole.Observe;
 
-    static Type? _host;
-    static MethodInfo? _boot, _create, _ingest, _verdict, _state, _close, _costOf, _cardIdOf, _answerConditions, _setDeckMirror;
-    static readonly BlockingCollection<Action> _work = new(boundedCapacity: 256);
-    static Thread? _worker;
+    public static MirrorPair? Pair { get; private set; }
+    public static MirrorPool? Pool { get; private set; }
+    static ShadowMirror? _solo;
 
-    public static bool Ready { get; private set; }
-    public static string? Failure { get; private set; }
-    public static int Dropped { get; private set; }
+    static int PairCap =>
+        int.TryParse(Environment.GetEnvironmentVariable("OPENVERSE_ENGINE_PAIRS"), out var n) && n > 0 ? n : 2;
 
-    // false + Failure set when the shadow is not available
+    // the A board. before Init, a mirror that is not Ready, so every call declines instead of throwing
+    public static ShadowMirror Primary => Pair?.A ?? (_solo ??= new ShadowMirror("engine-0"));
+
+    public static bool Ready => Primary.Ready;
+    public static string? Failure => Pair?.Failure ?? Primary.Failure;
+    public static int Dropped => Primary.Dropped;
+    public static int Timeouts => Primary.Timeouts;
+
     public static bool Init(string cardMasterCsv)
     {
-        if (Ready) return true;
-        try
-        {
-            var path = Path.Combine(AppContext.BaseDirectory, "OpenVerse.EngineHost.dll");
-            if (!File.Exists(path)) { Failure = "OpenVerse.EngineHost.dll not present"; return false; }
-
-            _host = Assembly.LoadFrom(path).GetType("OpenVerse.EngineHost.ShadowMatch");
-            if (_host is null) { Failure = "ShadowMatch not found in the host"; return false; }
-
-            _boot = _host.GetMethod("Boot", Pub);
-            _create = _host.GetMethod("Create", Pub);
-            _ingest = _host.GetMethod("Ingest", Pub);
-            _verdict = _host.GetMethod("Verdict", Pub);
-            _state = _host.GetMethod("State", Pub);
-            _close = _host.GetMethod("Close", Pub);
-            // optional surface: looked up but not required, null-checked at each call site, so an older host DLL loses
-            // one answer instead of disabling the shadow
-            _costOf = _host.GetMethod("CostOf", Pub);
-            _cardIdOf = _host.GetMethod("CardIdOf", Pub);
-            _answerConditions = _host.GetMethod("AnswerConditions", Pub);
-            _setDeckMirror = _host.GetMethod("SetDeckMirror", Pub);
-            if (_boot is null || _create is null || _ingest is null || _verdict is null || _state is null
-                || _close is null)
-            {
-                Failure = "the host is missing part of its surface";
-                return false;
-            }
-
-            if (Enum.TryParse<EngineRole>(Environment.GetEnvironmentVariable("OPENVERSE_ENGINE_ROLE"), true, out var r))
-                Role = r;
-
-            if (_boot.Invoke(null, [cardMasterCsv]) is not true) { Failure = HostError() ?? "boot failed"; return false; }
-
-            _worker = new Thread(Drain) { IsBackground = true, Name = "shadow-engine" };
-            _worker.Start();
-            Ready = true;
-            return true;
-        }
-        catch (Exception e) { Failure = e.InnerException?.Message ?? e.Message; return false; }
+        if (Enum.TryParse<EngineRole>(Environment.GetEnvironmentVariable("OPENVERSE_ENGINE_ROLE"), true, out var r))
+            Role = r;
+        if (Pair is { Ready: true }) return true;
+        var p = MirrorPair.Boot(cardMasterCsv, "engine");
+        Pair = p;
+        if (p.Ready) Pool = new MirrorPool(cardMasterCsv, PairCap);
+        return p.Ready;
     }
 
-    static string? HostError() => _host?.GetProperty("LastError", Pub)?.GetValue(null) as string;
+    public static MirrorPair? For(string battleId) => Pool?.Rent(battleId) ?? Pair;
 
-    static int _inFlight;
+    public static void Release(string battleId) => Pool?.Release(battleId);
 
-    static void Drain()
-    {
-        foreach (var job in _work.GetConsumingEnumerable())
-        {
-            try { job(); } catch { /* an observation is never worth taking the server down for */ }
-            finally { Interlocked.Decrement(ref _inFlight); }
-        }
-    }
+    public static bool WaitIdle(int timeoutMs = 120_000) => Pair?.WaitIdle(timeoutMs) ?? Primary.WaitIdle(timeoutMs);
 
-    static bool Post(Action job)
-    {
-        if (!Ready) return false;
-        Interlocked.Increment(ref _inFlight);
-        if (_work.TryAdd(job)) return true;
-        Interlocked.Decrement(ref _inFlight);
-        Dropped++;
-        return false;
-    }
-
-    // tests and shutdown only; the relay never blocks on the worker
-    public static bool WaitIdle(int timeoutMs = 120_000)
-    {
-        var until = Environment.TickCount64 + timeoutMs;
-        while (Volatile.Read(ref _inFlight) > 0)
-        {
-            if (Environment.TickCount64 > until) return false;
-            Thread.Sleep(10);
-        }
-        return true;
-    }
-
-    static int _handle = -1;
-
-    // playerHand/enemyHand are the post-mulligan opening-hand indices: the shadow never sees the Deal/Swap, so without
-    // them its board never leaves the deck. one match at a time
     public static void Begin(int seed, bool playerFirst, int[] playerDeck, int[] enemyDeck,
                              int[] playerHand, int[] enemyHand, Action<string> log,
                              int selfIdxSeed = -1, int oppoIdxSeed = -1)
     {
-        Post(() =>
-        {
-            if (_handle > 0) return;
-            _handle = (int)_create!.Invoke(null, [seed, playerFirst, playerDeck, enemyDeck, playerHand, enemyHand])!;
-            log(_handle > 0
-                ? $"shadow: observing, {(playerFirst ? "player" : "peer")} first"
-                : $"shadow: not started ({HostError()})");
-            // the deck mirror the clients get from the Deal the shadow never sees
-            if (_handle > 0 && _setDeckMirror is not null && selfIdxSeed != -1
-                && _setDeckMirror.Invoke(null, [_handle, selfIdxSeed, oppoIdxSeed]) is not true)
-                log($"shadow: deck mirror not installed ({HostError()})");
-        });
+        if (Pair is { } p) p.Begin(seed, playerFirst, playerDeck, enemyDeck, playerHand, enemyHand, log);
+        else Primary.Begin(seed, playerFirst, playerDeck, enemyDeck, playerHand, enemyHand, log, selfIdxSeed, oppoIdxSeed);
     }
 
-    // the relay adds these for the real peer's placeholder model; the shadow re-simulates from full information and
-    // needs none. knownList walks ReplaceReceivedCard.CreateActualCard, which NREs headless (no card view)
-    static readonly string[] PeerOnlyFields = ["knownList"];
-
-    // fire and forget
     public static void Observe(string uri, JsonObject body, bool isPlayer, Action<string> log)
     {
-        if (_handle <= 0 && !Ready) return;
-        // copied on the relay thread: it will not keep the node alive for the worker
-        var flat = Flatten(body);
-        foreach (var f in PeerOnlyFields) flat.Remove(f);
-        // a cardId on a uList entry takes the same CreateActualCard path knownList did, so drop it to the CardId==0
-        // branch (the entry itself stays, since it drives random resolution)
-        if (flat.TryGetValue("uList", out var ul) && ul is List<object?> entries)
-            foreach (var e in entries)
-                if (e is Dictionary<string, object?> d) d.Remove("cardId");
-        Post(() =>
-        {
-            if (_handle <= 0) return;
-            var why = (string)_ingest!.Invoke(null, [_handle, uri, flat, isPlayer])!;
-            if (why.Length > 0) log($"shadow: {uri} not applied - {why}");
-        });
+        if (Pair is { } p) p.Observe(uri, body, fromA: isPlayer, log);
+        else Primary.Observe(uri, body, isPlayer, log);
     }
 
-    // live cost of a hand card, queued so it sees every message ingested before it. bounded wait, then give up, and a
-    // miss falls back to the relay's own synthesis
-    public static bool TryCostOf(bool isSelfPlayer, int idx, out int cost, int timeoutMs = 250)
+    public static bool TryCostOf(bool isSelfPlayer, int idx, out int cost,
+                                 int timeoutMs = ShadowMirror.AnswerBudgetMs) =>
+        Actor(isSelfPlayer).TryCostOf(isSelfPlayer: true, idx, out cost, timeoutMs);
+
+    public static bool TryCardIdOf(bool isSelfPlayer, int idx, out int cardId,
+                                   int timeoutMs = ShadowMirror.AnswerBudgetMs) =>
+        Actor(isSelfPlayer).TryCardIdOf(isSelfPlayer: true, idx, out cardId, timeoutMs);
+
+    public static bool TryConditionAnswers(bool isSelfPlayer, int cardIdx, JsonArray specs, out JsonArray entries,
+                                           int timeoutMs = ShadowMirror.AnswerBudgetMs) =>
+        Actor(isSelfPlayer).TryConditionAnswers(isSelfPlayer: true, cardIdx, specs, out entries, timeoutMs);
+
+    // a question about a side is answered by the board that OWNS that side, where the card is a real card rather than
+    // one of the forty dummies. with one board the caller had to say which half to look in; with two it says whose
+    static ShadowMirror Actor(bool isSelfPlayer) => Pair?.Actor(isSelfPlayer) ?? Primary;
+
+    public static void CompareCost(bool isSelfPlayer, int idx, int? relayCost, Action<string> log) =>
+        Actor(isSelfPlayer).CompareCost(isSelfPlayer: true, idx, relayCost, log);
+
+    public static bool TryProject(bool isSelfPlayer, int idx, out JsonObject entry)
     {
-        cost = -1;
-        if (!Ready || _handle <= 0 || _costOf is null) return false;
-        int answer = -1;
-        using var done = new ManualResetEventSlim(false);
-        if (!Post(() =>
-        {
-            try { answer = (int)_costOf!.Invoke(null, [_handle, isSelfPlayer, idx])!; }
-            finally { done.Set(); }
-        })) return false;
-        if (!done.Wait(timeoutMs)) return false;
-        cost = answer;
-        return cost >= 0;
+        entry = new JsonObject();
+        return Pair is { } p && p.TryProject(isSelfPlayer, idx, out entry);
     }
 
-    // which card sits at an index, any zone, so one query replaces a per-route reconstruction. 0 = unknown, keep what you had
-    public static bool TryCardIdOf(bool isSelfPlayer, int idx, out int cardId, int timeoutMs = 250)
+    // the receiver's cursor repair: the actor's draws minus that receiver's. only a pair can compute it
+    public static bool TrySpin(bool isSelfPlayer, out int spin)
     {
-        cardId = 0;
-        if (!Ready || _handle <= 0 || _cardIdOf is null) return false;
-        int answer = 0;
-        using var done = new ManualResetEventSlim(false);
-        if (!Post(() =>
-        {
-            try { answer = (int)_cardIdOf!.Invoke(null, [_handle, isSelfPlayer, idx])!; }
-            finally { done.Set(); }
-        })) return false;
-        if (!done.Wait(timeoutMs)) return false;
-        cardId = answer;
-        return cardId != 0;
+        spin = 0;
+        return Pair is { } p && p.TrySpin(isSelfPlayer, out spin);
     }
 
-    // answers the actor's skill-condition queries as ready-made knownList entries; a spec it cannot evaluate has no
-    // row. call before the play reaches the shadow, since it needs the pre-play board
-    public static bool TryConditionAnswers(bool isSelfPlayer, int cardIdx, JsonArray specs,
-                                           out JsonArray entries, int timeoutMs = 250)
-    {
-        entries = new JsonArray();
-        if (!Ready || _handle <= 0 || _answerConditions is null || specs.Count == 0) return false;
-        // flattened here, on the relay thread: the worker must not touch nodes the relay still owns
-        var flat = specs.Select(n => (object?)(n is JsonObject o ? Flatten(o) : null)).Where(x => x is not null).ToList();
-        if (flat.Count == 0) return false;
-
-        List<object>? rows = null;
-        using var done = new ManualResetEventSlim(false);
-        if (!Post(() =>
-        {
-            try { rows = (List<object>?)_answerConditions.Invoke(null, [_handle, isSelfPlayer, cardIdx, flat]); }
-            finally { done.Set(); }
-        })) return false;
-        if (!done.Wait(timeoutMs) || rows is null || rows.Count == 0) return false;
-
-        foreach (var r in rows)
-            if (r is Dictionary<string, object?> d)
-                entries.Add(Unflatten(d));
-        return entries.Count > 0;
-    }
-
-    static JsonObject Unflatten(Dictionary<string, object?> d)
-    {
-        var o = new JsonObject();
-        foreach (var (k, v) in d) o[k] = v is null ? null : JsonValue.Create(v);
-        return o;
-    }
-
-    // log where the relay's synthesized price disagrees with the engine's, fire-and-forget: the evidence for turning
-    // AdviseCost on, kept off the relay's path
-    public static void CompareCost(bool isSelfPlayer, int idx, int? relayCost, Action<string> log)
-    {
-        if (!Ready || _handle <= 0 || _costOf is null) return;
-        Post(() =>
-        {
-            var live = (int)_costOf.Invoke(null, [_handle, isSelfPlayer, idx])!;
-            if (live < 0) return;
-            if (relayCost is null) log($"cost idx={idx}: relay said nothing, engine says {live}");
-            else if (relayCost != live) log($"cost idx={idx}: relay {relayCost} vs engine {live}  DISAGREE");
-        });
-    }
-
-    // the engine's verdict on the finished board, to compare against the relay's
     public static void End(Action<int, string> report)
     {
-        Post(() =>
-        {
-            if (_handle <= 0) return;
-            report((int)_verdict!.Invoke(null, [_handle])!, (string)_state!.Invoke(null, [_handle])!);
-            _close!.Invoke(null, [_handle]);
-            _handle = -1;
-        });
+        if (Pair is { } p) p.End((_, code, state) => report(code, state));
+        else Primary.End(report);
     }
-
-    // plain BCL collections cross the net10/net48 line unchanged (same runtime types); JSON nodes do not
-    static Dictionary<string, object?> Flatten(JsonObject o)
-    {
-        var d = new Dictionary<string, object?>(o.Count);
-        foreach (var (k, v) in o) d[k] = Value(v);
-        return d;
-    }
-
-    static object? Value(JsonNode? n) => n switch
-    {
-        JsonObject o => Flatten(o),
-        JsonArray a => a.Select(Value).ToList(),
-        JsonValue v => v.TryGetValue<int>(out var i) ? i
-                     : v.TryGetValue<bool>(out var b) ? b
-                     : v.TryGetValue<long>(out var l) ? l
-                     : v.TryGetValue<double>(out var f) ? f
-                     : v.ToString(),
-        _ => null,
-    };
 }
