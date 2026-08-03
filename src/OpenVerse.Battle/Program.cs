@@ -25,14 +25,11 @@ public partial class BattleServer
             using var sr = new StreamReader(z);
             var t0 = DateTime.UtcNow;
             var csv = sr.ReadToEnd();
-            Console.WriteLine(Engine.EngineBoot.Boot(csv)
-                ? $"Engine: ready, {Engine.EngineBoot.CardCount} cards in {(DateTime.UtcNow - t0).TotalMilliseconds:F0}ms"
-                : $"Engine: boot failed ({Engine.EngineBoot.Failure})");
 
             // the role is printed so an env var that silently failed to parse is not mistaken for one that took
             Console.WriteLine(Engine.ShadowBridge.Init(csv)
-                ? $"Shadow: role={Engine.ShadowBridge.Role} (set OPENVERSE_ENGINE_ROLE to change)"
-                : $"Shadow: off ({Engine.ShadowBridge.Failure})");
+                ? $"Engine: ready in {(DateTime.UtcNow - t0).TotalMilliseconds:F0}ms, role={Engine.ShadowBridge.Role} (engine.txt)"
+                : $"Engine: off ({Engine.ShadowBridge.Failure})");
         }
         catch (Exception e) { Console.WriteLine($"Engine: boot threw ({e.Message})"); }
     }
@@ -75,9 +72,12 @@ public partial class BattleServer
 
             Console.WriteLine($"WS connect: battleId={battleId} viewerId={viewerId} UA={userAgent}");
             var ws = await ctx.WebSockets.AcceptWebSocketAsync();
-            var session = new Session(ws, battleId, viewerId);
+            var session = new Session(ws, battleId, viewerId) { RemoteIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "" };
             session.OnEvent += (s, pkt, bin) =>
-                Console.WriteLine($"[{s.Id}] event: {pkt.EventName ?? "(none)"} ackId={pkt.AckId} binaries={bin.Length}");
+            {
+                if (Session.Chatty || pkt.EventName is not "alive")
+                    Console.WriteLine($"[{s.Id}] event: {pkt.EventName ?? "(none)"} ackId={pkt.AckId} binaries={bin.Length}");
+            };
             // a handler that throws never relays its message, and the peer sits on the gap in its playSeq stream for the
             // rest of the match, so one bad message desyncs everything after it. nothing observes these tasks, so say it
             session.OnMsg += (s, uri, payload, ackId) => _ = Observe(hub.Dispatch(s, uri, payload, ackId), s, uri);
