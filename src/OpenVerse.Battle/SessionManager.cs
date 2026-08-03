@@ -20,8 +20,12 @@ public sealed class SessionManager
             lock (list) { list.Remove(s); if (list.Count == 0) _byBattle.TryRemove(s.BattleId, out _); }
     }
 
-    public IReadOnlyList<Session> ByBattle(string battleId) =>
-        _byBattle.TryGetValue(battleId, out var list) ? list.ToArray() : Array.Empty<Session>();
+    // A copy, not the live list: callers iterate it while Add and Remove are mutating
+    public IReadOnlyList<Session> ByBattle(string battleId)
+    {
+        if (!_byBattle.TryGetValue(battleId, out var list)) return Array.Empty<Session>();
+        lock (list) return list.ToArray();
+    }
 
     public Session? Peer(Session self) =>
         ByBattle(self.BattleId).FirstOrDefault(s => s.Id != self.Id);
