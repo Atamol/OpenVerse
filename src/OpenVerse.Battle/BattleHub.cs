@@ -8,15 +8,10 @@ public sealed class BattleHub
 {
     readonly SessionManager _sessions;
     readonly BattleDeckStore _decks;
-    // session whose turn it currently is, per battle. a client emits Judge only when it is NOT its turn (reacting to the
-    // opponent's turn-end), so echoing that Judge back hands it the turn. tracking the owner makes the handoff fire once
-    // even though the client sends Judge for both TurnEnd and TurnEndFinal
     readonly Dictionary<string, Session> _turnOwner = new();
     // who goes first (turnState 0), rolled once per battle. Matched and BattleStart must agree on it
     readonly Dictionary<string, Session> _firstPlayer = new();
-    // battle field (map), rolled once per battle and mirrored to both players so they share the same stage
     readonly Dictionary<string, int> _fieldId = new();
-    // each player's deck shuffled once per match, stable for the whole battle (the idx->card mapping Deal/Swap/draws use)
     readonly Dictionary<string, int[]> _shuffled = new();
     // per-session card ledger: Index -> cardId. seeded from the 40-card shuffle (idx 1..40 -> deck[idx-1]) then grown from
     // add/metamorphose/copy-token/uList reveals so knownList resolves tokens (idx>40) and transforms, not just deck cards.
@@ -25,35 +20,30 @@ public sealed class BattleHub
     // return-to-deck reshuffle mirror. the client randomizes a card's deck slot via a XorShift seeded by idxChangeSeed and
     // NEVER sends the new index (OnIndexChange is a local replay recorder), so the server replicates the same lockstep
     // stream to keep _ledger correct after a card goes back to the deck. keyed by Session.Id, per-battle flags by BattleId
-    readonly Dictionary<string, XorShift> _rng = new();         // one persistent stream per session, seeded from its own seed
-    readonly Dictionary<string, int> _idxSeed = new();          // each session's own reshuffle seed, rolled once
-    readonly Dictionary<string, List<DeckCard>> _deck = new();  // each session's DeckCardList mirror, kept sorted by Index
-    readonly Dictionary<string, List<DeckCard>> _addQueue = new(); // enrolled DeckCard refs awaiting the next flush
-    readonly Dictionary<string, bool> _mulliganEnd = new();     // gates enrollment; flips true after Ready
-    readonly Dictionary<string, bool> _turnEndFlushed = new();  // de-dups the turn-end flush across TurnEndActions + TurnEnd
-    // the client only leaves the win/lose VFX once it RECEIVES a BattleFinish with a definitive result code, so the relay
-    // must author the finish. _finished guards a battle against a double-decide; _finishCode remembers each side's code to
-    // re-answer a retry report. both reset per battle at Matched so a rematch in the same room finalizes fresh
-    readonly Dictionary<string, bool> _finished = new();        // battle already finalized, by BattleId
-    readonly Dictionary<string, int> _finishCode = new();       // Session.Id -> RESULT_CODE to (re)send on a retry
-    // the room's running score. the client only ever displays what it is told (ParseWinCount reads ownerWin/guestWin off
-    // any received message), so nothing counts a win unless the relay does it. keyed by BattleId = the room, so it
-    // survives the battle sockets closing between games
+    readonly Dictionary<string, XorShift> _rng = new();
+    readonly Dictionary<string, int> _idxSeed = new();
+    readonly Dictionary<string, List<DeckCard>> _deck = new();
+    readonly Dictionary<string, List<DeckCard>> _addQueue = new();
+    readonly Dictionary<string, bool> _mulliganEnd = new();
+    readonly Dictionary<string, bool> _turnEndFlushed = new();
+    readonly Dictionary<string, bool> _finished = new();
+    readonly Dictionary<string, int> _finishCode = new();
     readonly Dictionary<string, (int Owner, int Guest)> _roomWins = new();
+    // who sat where, by BattleId = the room. the client tears the battle socket down between games, so from game 2 on
+    // the reconnect order is a race between two remote players and the seat cannot be read off it. RoomCreate's sender
+    // is the owner by definition and RoomEntry's is the visitor, so pin it there and keep it for the room's lifetime
+    readonly ConcurrentDictionary<string, string> _ownerViewer = new();
+    readonly ConcurrentDictionary<string, string> _visitorViewer = new();
+    readonly ConsistencyWatch _watch = new();
     // a close runs on the dying socket's continuation, concurrently with the survivor's dispatch
     readonly object _finishLock = new();
 
-    // cardId -> base_card_id, for the highlander check. empty (master absent) disables the synthesis rather than
-    // falling back to raw cardId equality, which would call an alt-art + normal pair distinct and inject a false 1
     readonly Dictionary<int, int> _baseCardIds;
     // cardId -> base cost + per-boost discount, for pricing a revealed hand card
     readonly Dictionary<int, CardCost> _cardCosts;
-    // the peer prices an opponent's hand card at its MASTER BASE cost unless knownList states a `cost`, then charges
-    // that against its model of the opponent's Pp. every cost change therefore has to be mirrored here or the peer
-    // over-deducts, refuses a later play ("PPover" -> NotPlayCard -> ConductError), and silently drops it
-    readonly Dictionary<string, Dictionary<int, List<CostMod>>> _costMods = new();  // idx -> modifier stack, in arrival order
-    readonly Dictionary<string, Dictionary<int, int>> _boost = new();               // idx -> SpellChargeCount
-    readonly HashSet<string> _costBlind = new();                                    // sessions whose cost state is no longer provable
+    readonly Dictionary<string, Dictionary<int, List<CostMod>>> _costMods = new();
+    readonly Dictionary<string, Dictionary<int, int>> _boost = new();
+    readonly HashSet<string> _costBlind = new();
 
     public BattleHub(SessionManager sessions, BattleDeckStore decks, Dictionary<int, int>? baseCardIds = null,
         Dictionary<int, CardCost>? cardCosts = null)
@@ -64,14 +54,59 @@ public sealed class BattleHub
         _cardCosts = cardCosts ?? new Dictionary<int, CardCost>();
     }
 
-    // resolved deck the API wrote at do_matching, or null if the client never set one (fall back to the starter shape)
-    // the WS "BattleId" header is the room_id (Room.RoomId). owner = first session to join the battle group, matching
-    // the API's room.OwnerUdid ordering (owner creates the room and connects first)
+    long VidOf(Session s)
+    {
+        var claimed = long.TryParse(s.ViewerId, out var v) && v > 0 ? v : 1;
+        var peer = _sessions.Peer(s);
+        if (peer is null || peer.ViewerId != s.ViewerId) return claimed;
+        // both sockets claim one id, so keep the owner's and move the visitor off it
+        return IsOwner(s) ? claimed : claimed + 1;
+    }
+
+    // the WS "BattleId" header is the room_id (Room.RoomId). the pinned seat only has to be stable and distinct between
+    // the two sockets, so the header viewer_id works here even though it is unusable as a BattleDeckStore key
+    bool IsOwner(Session s)
+    {
+        // the API is the only side that sees where each player connected from, and it writes that alongside the deck.
+        // the socket's own address settles the seat without trusting anything the client chose for itself
+        if (!string.IsNullOrEmpty(s.RemoteIp))
+        {
+            var ownerIp = _decks.Get(s.BattleId, isOwner: true)?.SourceIp ?? "";
+            var guestIp = _decks.Get(s.BattleId, isOwner: false)?.SourceIp ?? "";
+            if (ownerIp.Length > 0 && guestIp.Length > 0 && ownerIp != guestIp)
+            {
+                if (s.RemoteIp == ownerIp) return true;
+                if (s.RemoteIp == guestIp) return false;
+            }
+        }
+        // the header viewer_id only means anything while the two sockets carry DIFFERENT ones, and they do not always:
+        // the client sends its own cached value and two installs have been seen sending the same one. with one id for
+        // both, every session matches the owner and both players get the owner's class, deck and name
+        var peer = _sessions.Peer(s);
+        var usable = peer is null || peer.ViewerId != s.ViewerId;
+        if (usable && _ownerViewer.TryGetValue(s.BattleId, out var o)) return s.ViewerId == o;
+        if (usable && _visitorViewer.TryGetValue(s.BattleId, out var v)) return s.ViewerId != v;
+        var first = _sessions.ByBattle(s.BattleId).FirstOrDefault() == s;
+        Console.WriteLine(usable
+            ? $"[{s.Id}] seat not pinned for room {s.BattleId}, falling back to connect order -> isOwner={first}"
+            : $"[{s.Id}] both sockets in room {s.BattleId} report viewer {s.ViewerId} and no source IP settled it; using connect order -> isOwner={first}");
+        return first;
+    }
+
+    // RoomCreate's sender owns the room and RoomEntry's is the visitor, so either message pins both seats
+    void PinSeat(Session s, bool isOwner)
+    {
+        var map = isOwner ? _ownerViewer : _visitorViewer;
+        if (map.TryGetValue(s.BattleId, out var had) && had != s.ViewerId)
+            Console.WriteLine($"[{s.Id}] seat {(isOwner ? "owner" : "visitor")} of room {s.BattleId} moved {had} -> {s.ViewerId}");
+        map[s.BattleId] = s.ViewerId;
+    }
+
     BattleDeck? DeckFor(Session s)
     {
-        var isOwner = _sessions.ByBattle(s.BattleId).FirstOrDefault() == s;
+        var isOwner = IsOwner(s);
         var d = _decks.Get(s.BattleId, isOwner);
-        Console.WriteLine($"DeckFor roomId={s.BattleId} isOwner={isOwner} found={d is not null} class={d?.ClassId ?? -1}");
+        Console.WriteLine($"DeckFor roomId={s.BattleId} viewer={s.ViewerId} isOwner={isOwner} found={d is not null} class={d?.ClassId ?? -1}");
         return d;
     }
 
@@ -89,6 +124,7 @@ public sealed class BattleHub
 
     async Task DispatchInOrder(Session s, string uri, JsonNode? payload, int? ackId)
     {
+        s.LastHeard = DateTimeOffset.UtcNow;
         var pubSeq = payload?["pubSeq"]?.GetValue<int>() ?? 0;
         // name the card on every action, or a later complaint about "idx 43" cannot be tied to anything
         var what = uri == "PlayActions" && payload is JsonObject pj && AsInt(pj["playIdx"]) is int px
@@ -105,10 +141,12 @@ public sealed class BattleHub
                 // ReceiveNodeResultCode.Success = 1. Also need a synchronize msg back so PlayerControllerForOpponent.OnReceiveFast
                 // sets ConnectRoomResult=SUCCESS and the room UI proceeds — the ACK alone doesn't do it.
                 // Room URIs aren't in IsMatchingURI, so we omit playSeq so the msg isn't stocked and reaches PlayReceiveData
+                PinSeat(s, isOwner: true);
                 if (ackId is int i2) await s.SendAckResult(i2, pubSeq, new { resultCode = 1 });
                 await s.SendMsg("RoomCreate", new { resultCode = 1 }, withPlaySeq: false);
                 break;
             case "RoomEntry":
+                PinSeat(s, isOwner: false);
                 if (ackId is int i3) await s.SendAckResult(i3, pubSeq, new { resultCode = 1 });
                 // ownerWin/guestWin make the visitor's ParseWinCount flip both slots from the -1 default to 0.
                 // no userName here: with userName the client treats this self-echo as an opponent-enter and rebuilds the oppo card
@@ -149,12 +187,20 @@ public sealed class BattleHub
             case "SelectObject":
                 // steady-state turn traffic: ack the sender, relay to the peer on its own playSeq stream
                 if (ackId is int iBt) await s.SendAck(iBt, pubSeq);
+                _watch.NoteRelayed(s.BattleId, $"{s.Id} {uri}{what}");
+                if (uri is "TurnEnd" or "TurnEndFinal") _watch.NoteTurnEnd(s.BattleId, s.Id, payload);
                 await RelayBattle(s, uri, payload);
                 break;
             case "Judge":
                 // turn handoff, not peer traffic: echo it back to the sender so its ControlTurnStartPlayer runs and it
                 // takes the turn. relaying to the peer would instead restart the peer's turn
                 if (ackId is int iJd) await s.SendAck(iJd, pubSeq);
+                if (_watch.NoteJudge(s.BattleId, s.Id, payload) is { } div)
+                {
+                    Console.WriteLine($"[{s.BattleId}] {div}");
+                    foreach (var line in div.Window) Console.WriteLine($"[{s.BattleId}]   since last agreement: {line}");
+                    if (await StopOnDivergence(s, div)) break;
+                }
                 await HandleJudge(s, payload);
                 break;
             case "JudgeResult":
@@ -258,13 +304,33 @@ public sealed class BattleHub
         if (peer is not null) await peer.SendMsg(uri, peerObj, withPlaySeq: false);
     }
 
+    // a peer that stopped answering for this long is gone as far as the match is concerned. the client's own BattleStop is
+    // 95s, so this has to fire well inside that or both sides just sit there
+    public static readonly TimeSpan PeerSilence = TimeSpan.FromSeconds(45);
+
+    // off unless asked for. a real drop is obvious to both players anyway, and ending a live battle on a heartbeat this
+    // relay had already been counting wrong is a far worse failure than the one it was added to fix
+    static readonly bool DropOnSilence =
+        Environment.GetEnvironmentVariable("OPENVERSE_PEER_TIMEOUT")?.Trim().ToLowerInvariant() is "1" or "true" or "on";
+
+    // ocs=WAITING makes the client show "connection unstable" and disable touch (mulligan can't be submitted), so a
+    // transient lookup miss still reports ONLINE. only a measured silence is worth telling the survivor about
+    public static bool PeerIsOnline(Session? peer, DateTimeOffset now) =>
+        peer is null || now - peer.LastHeard < PeerSilence;
+
     public async Task Alive(Session s)
     {
         var peer = _sessions.Peer(s);
-        // ocs=WAITING makes the client show "connection unstable" and disable touch (mulligan can't be submitted).
-        // in a 1v1 the opponent is always meant to be present, so report ONLINE regardless of a transient peer lookup miss
-        Console.WriteLine($"[{s.Id}] alive (battle={s.BattleId}, peer={(peer?.Id ?? "null")}, roster={_sessions.ByBattle(s.BattleId).Count})");
-        await s.SendAlive(peerOnline: true);
+        var silence = peer is null ? TimeSpan.Zero : DateTimeOffset.UtcNow - peer.LastHeard;
+        var online = PeerIsOnline(peer, DateTimeOffset.UtcNow);
+        Console.WriteLine($"[{s.Id}] alive (battle={s.BattleId}, peer={(peer?.Id ?? "null")}, roster={_sessions.ByBattle(s.BattleId).Count}, peerSilent={silence.TotalSeconds:F0}s)");
+        await s.SendAlive(peerOnline: online || !DropOnSilence);
+        if (!online && peer is not null)
+        {
+            Console.WriteLine($"[{s.Id}] peer {peer.Id} has been silent {silence.TotalSeconds:F0}s"
+                            + (DropOnSilence ? " -> ending the battle" : " (not acting on it; set OPENVERSE_PEER_TIMEOUT to)"));
+            if (DropOnSilence) await PeerClosed(peer);
+        }
     }
 
     // both SetupComplete: kick the client into the RoomReady flow, which triggers DoMatching HTTP then emits InitRoomBattle back to us
@@ -281,6 +347,10 @@ public sealed class BattleHub
     {
         var peer = _sessions.Peer(s);
         if (peer is null || !peer.InitBattleSent) return;
+        // both sides reach here, and a re-entrant second pass would re-roll the coin flip, the stage, both idx seeds, both
+        // deck seeds and the StableRandom seed on a battle already running
+        if (s.MatchedSent || peer.MatchedSent) return;
+        s.MatchedSent = peer.MatchedSent = true;
         // roll the coin flip and the stage once, here, since Matched is the first place both are needed. turnState flags
         // first/second at Ready (the client reads it to set isEnemyFirstTurn), so it must be 0/1 here (only after Ready
         // does the relay push both to 0). fieldId picks the map and must match on both clients
@@ -290,6 +360,7 @@ public sealed class BattleHub
         _turnOwner[s.BattleId] = first;
         _fieldId[s.BattleId] = Random.Shared.Next(1, 8);
         _finished[s.BattleId] = false;
+        _watch.Reset(s.BattleId);
         // one reshuffle seed per player, kept for the whole battle. each seeds that player's own deck XorShift, handed out
         // mirror-swapped at Deal so a card added to a player's deck reshuffles identically on both clients and here
         int sA = RollSeed(), sB = RollSeed();
@@ -308,6 +379,32 @@ public sealed class BattleHub
         _stableSeed[s.BattleId] = Random.Shared.Next();
         await first.SendMsg("Matched", MatchedPayload(first, second, s.BattleId, turnState: 0));
         await second.SendMsg("Matched", MatchedPayload(second, first, s.BattleId, turnState: 1));
+    }
+
+    // "warn" only reports. "stop" ends a match the two clients have stopped agreeing about, rather than letting it run on
+    // a board neither of them can trust. defaults to warn until the comparator has been watched on real matches
+    static readonly string DesyncMode = Environment.GetEnvironmentVariable("OPENVERSE_DESYNC")?.Trim().ToLowerInvariant() ?? "warn";
+    // one diverged boundary can be a straggler, two in a row means it is not repairing itself
+    const int StopAfterConsecutive = 2;
+
+    // End + endType=VALIDATE lands on DataInconsistencyBattleEndOperation -> JudgeEndTypeToLose -> ReceiveInvalidLose, and
+    // the client then reports 900/901, which DecideResult already reads as a mutual no-contest
+    async Task<bool> StopOnDivergence(Session s, Divergence div)
+    {
+        if (DesyncMode != "stop" || div.Consecutive < StopAfterConsecutive) return false;
+        lock (_finishLock)
+        {
+            if (_finished.GetValueOrDefault(s.BattleId)) return false;
+            _finished[s.BattleId] = true;
+        }
+        Console.WriteLine($"[{s.BattleId}] no-contest: {div.Consecutive} diverged boundaries in a row");
+        try
+        {
+            foreach (var p in _sessions.ByBattle(s.BattleId))
+                await p.SendMsg("End", new { endType = 2 });
+        }
+        finally { EndShadow(s, 900); }
+        return true;
     }
 
     // XorShift.IsActive requires seed != -1; any other int (incl 0) is a valid seed
@@ -396,9 +493,6 @@ public sealed class BattleHub
     object[] RedrawCards(Session owner, int isSelf) =>
         owner.Redraws.Select(kv => (object)new { idx = kv.Value, cardId = isSelf == 1 ? ShuffledDeckFor(owner)[kv.Value - 1] : StarterCard, isSelf, pos = kv.Key, to = HandState }).ToArray();
 
-    // opening hand: 3 cards per side, isSelf splits self (1) from opponent (0), pos orders them.
-    // the client builds each deck with card Index = slot+1 (SBattleLoad CreateCard passes i+1), so deck cards are 1..40.
-    // idx must be that 1-based deck Index or GetBattleCardIdx returns null and DrawCard NREs every frame (Deal never advances)
     object[] DealCards(Session s)
     {
         var deck = ShuffledDeckFor(s);
@@ -430,9 +524,11 @@ public sealed class BattleHub
         body["turnState"] = 0;
         NormalizeKeyAction(body);
         NormalizeTargetList(body);
+        LearnAddedCards(s, body);
         InjectKnownCard(s, uri, body);
         InjectConditionAnswers(s, uri, body);
         InjectSummonedCardIds(s, body);
+        InjectSpin(s, body);
         UpdateLedger(s, body);
         UpdateCostState(s, body);
         TrackVitals(s, body);
@@ -445,20 +541,47 @@ public sealed class BattleHub
         if (uri is "TurnEndFinal") await FlushVerdict(s.BattleId, "action closed");
         RecordShape(uri, body);
         // after the send, never before: the shadow is an observer and the peer should not wait on it
-        Engine.ShadowBridge.Observe(uri, body, s.Id == _shadowPlayerId, l => Console.WriteLine($"[{s.Id}] {l}"));
+        ObserveInRoom(s, uri, body);
     }
 
-    // the session the shadow holds as its BattlePlayer; everything it is told is relative to this, so pin it once
-    string? _shadowPlayerId;
+    // which session each room's A board holds, and the pair it holds it on. keyed by room rather than kept in one field
+    // so two rooms playing at once do not answer each other's questions
+    readonly ConcurrentDictionary<string, (string PlayerId, Engine.MirrorPair? Pair)> _shadowOf = new();
+
+    string? ShadowPlayerId(Session s) => _shadowOf.TryGetValue(s.BattleId, out var o) ? o.PlayerId : null;
+    Engine.MirrorPair? PairFor(Session s) => _shadowOf.TryGetValue(s.BattleId, out var o) ? o.Pair : null;
+    bool IsShadowPlayer(Session s) => s.Id == ShadowPlayerId(s);
+
+    // a question about this session's own cards goes to the board that holds them as real cards rather than as one of
+    // the forty dummies, which is why every call below asks it about isSelfPlayer: true
+    Engine.ShadowMirror? Board(Session s) => PairFor(s)?.Actor(IsShadowPlayer(s));
+
+    // both boards take every message, and the receiving one then says what a stock client would have done with it -
+    // the same check that writes ConductError, read here instead of out of a client log afterwards
+    void ObserveInRoom(Session s, string uri, JsonObject body)
+    {
+        if (PairFor(s) is not { } pair) return;
+        var fromA = IsShadowPlayer(s);
+        pair.Observe(uri, body, fromA, l => Console.WriteLine($"[{s.Id}] {l}"));
+        if (Engine.ShadowBridge.Role < Engine.ShadowBridge.EngineRole.AnswerBlanks) return;
+        if (pair.PeerRefusedLast(fromA, out var verdict))
+            Console.WriteLine($"[{s.Id}] the peer will REFUSE this {uri}: {verdict}");
+    }
 
     void BeginShadow(Session a, Session b)
     {
         var first = _firstPlayer.TryGetValue(a.BattleId, out var f) ? f : a;
         var second = first == a ? b : a;
-        _shadowPlayerId = first.Id;
-        // the shadow's StableRandom has to be the stream the two clients draw from, not a deck seed: every answer it
-        // gives about a random effect is computed from it
-        Engine.ShadowBridge.Begin(_stableSeed.GetValueOrDefault(a.BattleId, 12345), true,
+        var pair = Engine.ShadowBridge.For(a.BattleId);
+        _shadowOf[a.BattleId] = (first.Id, pair);
+        if (pair is null)
+        {
+            Console.WriteLine($"[{a.BattleId}] no engine available for this room (all pairs are busy); relaying without one");
+            return;
+        }
+        // the StableRandom stream has to be the one the two clients draw from, not a deck seed: every answer either
+        // board gives about a random effect is computed from it
+        pair.Begin(_stableSeed.GetValueOrDefault(a.BattleId, 12345), aFirst: true,
             ShuffledDeckFor(first), ShuffledDeckFor(second),
             OpeningHandIdx(first), OpeningHandIdx(second),
             l => Console.WriteLine($"[{first.Id}] {l}"));
@@ -468,8 +591,6 @@ public sealed class BattleHub
         // shows which way round is in step with the players
     }
 
-    // the post-mulligan opening hand: deck slot pos+1 for each of the three opening positions, or its redraw
-    // replacement. same rule HandleSwap uses to seed the deck mirror
     static int[] OpeningHandIdx(Session s)
     {
         var hand = new int[3];
@@ -477,8 +598,6 @@ public sealed class BattleHub
         return hand;
     }
 
-    // what the real client puts on the wire, one line per distinct shape. the send/receive mismatches were only ever
-    // found from live traffic, so record them rather than guess. printed once per shape
     readonly HashSet<string> _seenShapes = new();
 
     void RecordShape(string uri, JsonObject body)
@@ -492,9 +611,8 @@ public sealed class BattleHub
     // track each deck's index set from the move entries and enroll cards that land in the deck, so a later flush reshuffles
     // them. a card enters the deck as a move to=Deck(0) (returns + a token's companion move); leaves as a move from=Deck.
     // the add/uList reveals in UpdateLedger set cardIds only and never enroll, so enrollment has a single channel
-    // leader life / PP / cemetery per session. the clients broadcast every change as a playerParam entry, so this is
-    // observed rather than simulated - which is why conditions that read these (vengeance, overflow) were never actually
-    // out of reach, only unparsed. read-only: nothing here is sent, so a wrong value costs a log line, not a match
+    // Observed from the playerParam entries the clients broadcast, not simulated. MaybeFinalizeNaturalFinish decides
+    // matches off Life, so a wrong value here loses someone a game
     public sealed class Vitals
     {
         public int Life = 20, Pp, MaxPp, Cemetery;
@@ -642,35 +760,43 @@ public sealed class BattleHub
         }
     }
 
-    const int FieldState = 20; // NetworkCardPlaceState.Field
+    const int FieldState = 20;     // NetworkCardPlaceState.Field
+    const int CemeteryState = 30;
+    const int BanishState = 40;
+    const int RidingState = 70;
+    const int UniteState = 90;
 
-    // a uList entry landing on the field names no card: RegisterUnapproved.CardId stays 0 unless isCardId, which only
-    // the banish/discard and own-hand-play paths set. the peer models the enemy's hidden zones as placeholders and
-    // treats CardId==0 as "stay a placeholder", so the arrival never lands, the slot never leaves the zone it came
-    // from, and a later hand play of that idx dies as notHandCard. the client enrolls the real card into
-    // DeckSkillCardList (which is what lets a deck skill fire at all) only on from==Deck AND CardId!=0 - a pair no
-    // client writer can emit, so that path is one the real server fed.
-    // Field and only Field: the destination is what makes a card public, so a reveal into HAND would leak the
-    // opponent's draws, and whether a draw is revealed is the skill's call rather than ours. from==Hand is skipped
-    // because a play already gets its identity through InjectKnownCard.
-    // isSelf must be 1: the peer replaces on BattleEnemy regardless, so an isSelf=0 reveal would stamp the peer's cardId
-    // onto the sender's slot at that index
-    // Ledger first, engine second. The ledger is a reconstruction and only knows indices it has seen enrolled, so it
-    // goes blank on cards the relay never watched arrive; the engine is playing the same match and holds every zone,
-    // so it answers those. Strictly additive - it can only fill a blank the ledger already declined, never overrule a
-    // resolution that works today - and every fill is logged so the live run shows how far the engine is carrying this.
+    // NetworkCardPlaceState, decided once for every destination rather than one bug report at a time. a card that lands
+    // somewhere both players can look at has to be named, or the peer builds the entry off its own forty dummies and
+    // shows a Goblin. 葬送 (hand -> cemetery) is the one that surfaced it, and it is the second commonest move in the
+    // shipped capture, so it had been wrong the whole time.
+    // public: Field, Cemetery, Banish, and Riding/Unite (both are attached to a unit standing on the board).
+    // private: Deck and Hand hide their contents, and Reservation is a card queued for hand.
+    // undecided: None(50), FusionIngredient(60), BlackHole(999) - they are declined, and the decline is logged, so a
+    // gap shows up as a line rather than as a player noticing a Goblin
+    static bool PublicDestination(int? to) =>
+        to is FieldState or CemeteryState or BanishState or RidingState or UniteState;
+
     void InjectSummonedCardIds(Session s, JsonObject body)
     {
         var ledger = LedgerFor(s);
-        var self = s.Id == _shadowPlayerId;
         InjectSummonedCardIds(body, ix =>
         {
             if (ledger.TryGetValue(ix, out var known)) return known;
-            if (!Engine.ShadowBridge.TryCardIdOf(self, ix, out var fromEngine)) return 0;
+            if (Board(s) is not {} bd1 || !bd1.TryCardIdOf(true, ix, out var fromEngine)) return 0;
             Console.WriteLine($"[{s.Id}] engine resolved idx={ix} -> {fromEngine} (ledger had nothing)");
             return fromEngine;
-        });
+        }, (from, to, idx, why) =>
+            Console.WriteLine($"[{s.Id}] NOT NAMED idx={idx} moving {Zone(from)}->{Zone(to)}: {why}. "
+                            + "the peer will show whatever its own deck has at that slot"));
     }
+
+    static string Zone(int? z) => z switch
+    {
+        0 => "deck", 10 => "hand", FieldState => "field", CemeteryState => "cemetery", BanishState => "banish",
+        50 => "none", 60 => "fusion", RidingState => "riding", 80 => "reservation", UniteState => "unite",
+        999 => "blackhole", null => "(unstated)", _ => z.ToString()!,
+    };
 
     // cardId is one scalar per entry, but the sender merges adjacent records whose fields all match - and its merge gate
     // compares CardId, which is 0 on every one of these, so two DIFFERENT cards collapse into a single entry. un-merging
@@ -682,31 +808,50 @@ public sealed class BattleHub
         => InjectSummonedCardIds(body, ix => ledger.TryGetValue(ix, out var c) ? c : 0);
 
     /// <param name="resolve">idx -> cardId, or 0 when the card cannot be named (which keeps the safe decline)</param>
-    public static void InjectSummonedCardIds(JsonObject body, Func<int, int> resolve)
+    /// <param name="declined">told about every entry left unnamed, so a gap is a log line rather than a bug report</param>
+    public static void InjectSummonedCardIds(JsonObject body, Func<int, int> resolve,
+                                             Action<int?, int?, int, string>? declined = null)
     {
         if (body["uList"] is not JsonArray ul) return;
         var next = new JsonArray();
         var split = false;
+        void Report(int? from, int? to, int idx, string why) => declined?.Invoke(from, to, idx, why);
         foreach (var uo in ul)
         {
             var keep = uo?.DeepClone();
-            // anything ARRIVING on the field is public once it lands, so the source zone does not matter: deck
-            // (direct summon), cemetery (reanimate), banish and reservation all need the same id the actor never
-            // writes. two exclusions: a destination other than the field may be private (a reveal into HAND would
-            // leak the opponent's draws), and a play out of hand already gets its identity from InjectKnownCard, so
-            // leaving that path alone keeps the busiest route untouched
             if (uo is not JsonObject u
                 || AsInt(u["cardId"]) is not null            // the client named it; that id wins
-                || (AsInt(u["isSelf"]) ?? 1) != 1
-                || AsInt(u["to"]) != FieldState || AsInt(u["from"]) is null or HandState)
+                || (AsInt(u["isSelf"]) ?? 1) != 1)
             { next.Add(keep); continue; }
+
+            var to = AsInt(u["to"]);
+            var from = AsInt(u["from"]);
+            // hand -> field is the play route InjectKnownCard owns; hand -> cemetery/banish is 葬送 and needs naming
+            var why = !PublicDestination(to) ? "that destination is not public"
+                    : from is null ? "the actor did not say where it came from"
+                    : from == HandState && to == FieldState ? null      // InjectKnownCard's route, not a gap
+                    : null;
+            if (why is not null)
+            {
+                // a destination the peer can see is the only thing that has ever caused this, so say which one it was
+                if (PublicDestination(to) || to is not (0 or HandState or 80))
+                    Report(from, to, ReadIdxList(u["idxList"] ?? u["idx"]).FirstOrDefault(), why);
+                next.Add(keep); continue;
+            }
+            if (from == HandState && to == FieldState) { next.Add(keep); continue; }
 
             var idxs = ReadIdxList(u["idxList"] ?? u["idx"]).ToList();
             // resolve once per index: the resolver may reach the engine, and asking twice for the same slot would
             // double that cost for no gain
             var ids = idxs.Select(resolve).ToList();
-            // all-or-nothing: an unresolved index (the -99 shortage sentinel included) keeps the known-safe decline
-            if (idxs.Count == 0 || ids.Any(c => c == 0)) { next.Add(keep); continue; }
+            // all-or-nothing: an unresolved index (the -99 shortage sentinel included) keeps the known-safe decline.
+            // this is the one that actually shows a Goblin - the destination is public, so the peer WILL draw the entry
+            // off its own deck - so it is the loudest of the declines
+            if (idxs.Count == 0 || ids.Any(c => c == 0))
+            {
+                Report(from, to, idxs.FirstOrDefault(), "neither the ledger nor the engine could name it");
+                next.Add(keep); continue;
+            }
 
             var cardId = ids[0];
             if (ids.All(c => c == cardId)) { u["cardId"] = cardId; next.Add(u.DeepClone()); continue; }
@@ -738,7 +883,7 @@ public sealed class BattleHub
             // a card that entered hand during the match has no deck slot, and the actor sends cardId 0 for anything the
             // peer cannot see, so the ledger never learns it. declining here drops the whole play on the peer, so ask
             // the engine, which has been playing the same match
-            if (!Engine.ShadowBridge.TryCardIdOf(s.Id == _shadowPlayerId, pIdx, out cardId) || cardId == 0) return;
+            if (Board(s) is not {} bd0 || !bd0.TryCardIdOf(true, pIdx, out cardId) || cardId == 0) return;
             Console.WriteLine($"[{s.Id}] play idx={pIdx}: engine named {cardId} (ledger had nothing)");
         }
         var entry = new JsonObject { ["idx"] = pIdx, ["cardId"] = cardId, ["isSelf"] = 0, ["is_open"] = 1 };
@@ -747,11 +892,12 @@ public sealed class BattleHub
         int? relayCost = TryFinalCost(s, pIdx, cardId, out var finalCost) ? finalCost : null;
         if (TryEngineCostAdvice(s, pIdx, cardId, relayCost, out var advised)) relayCost = advised;
         else
-            Engine.ShadowBridge.CompareCost(s.Id == _shadowPlayerId, pIdx, relayCost,
+            Board(s)?.CompareCost(true, pIdx, relayCost,
                 l => Console.WriteLine($"[{s.Id}] {l} (card {cardId})"));
         // an absent cost is not "no opinion": ReplaceReceivedCard only adds a CostSetModifier when one is stated, so the
         // peer bills the printed cost, drains the actor's Pp and starts refusing plays. every board desync so far
         // started there
+        if (relayCost is null && Project(s, pIdx, cardId) is int projected) relayCost = projected;
         if (relayCost is int c) entry["cost"] = c;
         else if (_cardCosts.TryGetValue(cardId, out var known) && known.BaseCost > 0)
             Console.WriteLine($"[{s.Id}] cost idx={pIdx} card={cardId}: NOT STATED, the peer will charge {known.BaseCost}");
@@ -765,7 +911,141 @@ public sealed class BattleHub
         // SkillConditionCheckList, out of knownList, and the bit becomes invisible
         if (TryReadHighlanderSpec(body, out var excludeBase) && TryIsHighlanderDeck(s, excludeBase, out var isHl) && isHl)
             entry["highlander"] = 1;
-        body["knownList"] = new JsonArray { entry };
+        var reveal = new JsonArray { entry };
+        AddMovedCards(s, body, pIdx, reveal);
+        AddResolvedCards(s, body, pIdx, reveal);
+        body["knownList"] = reveal;
+    }
+
+    // a token minted mid-match has no deck slot, so the ledger - which is built from the deck - can never name it, and
+    // its index runs past 40. the actor DOES state what it is, in orderList: {"add":{"idx":[41],"card":{"cardId":N}}}.
+    // orderList has no readers on the client, so that identity dies on arrival unless the relay moves it somewhere the
+    // client does read. learn it here, before every naming pass, and the rest of the pipeline can name it like any card
+    void LearnAddedCards(Session s, JsonObject body)
+    {
+        if (body["orderList"] is not JsonArray ol) return;
+        foreach (var o in ol)
+        {
+            if (o is not JsonObject oo || oo["add"] is not JsonObject add) continue;
+            if ((AsInt(add["isSelf"]) ?? 1) != 1) continue;
+            if (AsInt(add["card"]?["cardId"]) is not int cardId || cardId <= 0) continue;
+            foreach (var ix in ReadIdxList(add["idx"] ?? add["idxList"]))
+            {
+                var ledger = LedgerFor(s);
+                if (ledger.TryGetValue(ix, out var had) && had == cardId) continue;
+                ledger[ix] = cardId;
+                Console.WriteLine($"[{s.Id}] learned idx={ix} is {cardId} from its add record");
+            }
+        }
+    }
+
+    // the rule that generalises. naming by DESTINATION was the wrong axis: a fusion consumes its ingredients into
+    // FusionIngredient(60), emits no `move` at all, and AddMovedCards cannot see it. name by RESOLUTION instead - every
+    // actor-side index this message makes the peer look up.
+    // left unnamed, the peer resolves the index against its own forty placeholders, and any local check that reads a
+    // PROPERTY of that card takes the other branch. the fusion of 119241030 wants {tribe=lord} and a placeholder is
+    // TribeType.ALL, so IsFusionable is false, BattlePlayerBase.Fusion returns before depositing anything, and every
+    // later condition reading fusion_ingrediented_card_list is false on that machine forever after.
+    // OperateReceiveChecker has no FUSION case, so the message passes its check either way, which is why this went
+    // unnoticed: nothing complained, the two boards just stopped agreeing
+    void AddResolvedCards(Session s, JsonObject body, int playIdx, JsonArray known)
+    {
+        var named = new HashSet<int> { playIdx };
+        foreach (var e in known) if (AsInt(e?["idx"]) is int have) named.Add(have);
+
+        var want = new List<int>();
+        // isSelf is sender-relative, so 1 is the actor's own card - the half the peer holds as placeholders
+        if (body["oppoTargetList"] is JsonArray tl)
+            foreach (var t in tl)
+                if (t is JsonObject to && (AsInt(to["isSelf"]) ?? 0) == 1 && AsInt(to["targetIdx"]) is int i) want.Add(i);
+        if (body["orderList"] is JsonArray ol)
+            foreach (var o in ol)
+                if (o is JsonObject oo && oo["fusion"] is JsonObject fu && (AsInt(fu["isSelf"]) ?? 1) == 1)
+                    want.AddRange(ReadIdxList(fu["ingredients"]));
+
+        foreach (var ix in want)
+        {
+            if (!named.Add(ix)) continue;
+            var id = LedgerFor(s).TryGetValue(ix, out var c) ? c
+                   : Board(s) is {} bd && bd.TryCardIdOf(true, ix, out var fromEngine) ? fromEngine : 0;
+            if (id == FallbackCard) id = 0;
+            if (id == 0)
+            {
+                Console.WriteLine($"[{s.Id}] NOT NAMED idx={ix}, which play {playIdx} makes the peer resolve: "
+                                + "it will look the index up against its own placeholders and may take a different branch");
+                continue;
+            }
+            Console.WriteLine($"[{s.Id}] named idx={ix} ({id}) for the peer to resolve against, alongside play {playIdx}");
+            known.Add(new JsonObject { ["idx"] = ix, ["cardId"] = id, ["isSelf"] = 0, ["is_open"] = 1 });
+        }
+    }
+
+    // knownList is a LIST and the peer looks entries up by index, but the relay only ever put the played card in it. a
+    // play that also moves ANOTHER card somewhere public - 葬送 entombing a follower chosen from hand is the one that
+    // surfaced this - left that card unnamed, so the peer resolved it against its own forty dummies and drew a Goblin.
+    // the moves ride orderList, which no client reads, so this is the only channel that can carry the identity
+    void AddMovedCards(Session s, JsonObject body, int playIdx, JsonArray known)
+    {
+        if (body["orderList"] is not JsonArray orders) return;
+        var named = new HashSet<int> { playIdx };
+        foreach (var o in orders)
+        {
+            if (o is not JsonObject oo || oo["move"] is not JsonObject mv) continue;
+            if ((AsInt(mv["isSelf"]) ?? 1) != 1) continue;
+            var to = AsInt(mv["to"]);
+            var from = AsInt(mv["from"]);
+            if (!PublicDestination(to)) continue;
+            // hand -> field is the play itself, already named by the entry above
+            if (from == HandState && to == FieldState) continue;
+            foreach (var ix in ReadIdxList(mv["idx"] ?? mv["idxList"]))
+            {
+                if (!named.Add(ix)) continue;
+                var id = LedgerFor(s).TryGetValue(ix, out var c) ? c
+                       : Board(s) is {} bd && bd.TryCardIdOf(true, ix, out var e) ? e : 0;
+                // the filler is what a deck the relay never resolved is padded with, and it is the very card the peer
+                // would have shown anyway. stating it would turn "I do not know" into "it is a Goblin", which is the
+                // same picture with none of the doubt
+                if (id == FallbackCard) id = 0;
+                if (id == 0)
+                {
+                    Console.WriteLine($"[{s.Id}] NOT NAMED idx={ix} moving {Zone(from)}->{Zone(to)} alongside play {playIdx}: "
+                                    + "neither the ledger nor the engine could name it. the peer will show a placeholder");
+                    continue;
+                }
+                Console.WriteLine($"[{s.Id}] named idx={ix} ({id}) moving {Zone(from)}->{Zone(to)} alongside play {playIdx}");
+                known.Add(new JsonObject { ["idx"] = ix, ["cardId"] = id, ["isSelf"] = 0, ["is_open"] = 1 });
+            }
+        }
+    }
+
+    // the receiver re-simulates the actor's action against forty dummies, so its StableRandom cursor lands short of the
+    // actor's. spin is how far, and OperateReceive burns exactly that many draws to catch up. it is forward-only and
+    // was the original repair channel; the relay has never sent it, so every random effect left the two cursors apart.
+    // both numbers only exist once each client has a board of its own
+    void InjectSpin(Session s, JsonObject body)
+    {
+        if (Engine.ShadowBridge.Role < Engine.ShadowBridge.EngineRole.AnswerBlanks) return;
+        if (body.ContainsKey("spin")) return;
+        if (PairFor(s) is not {} sp || !sp.TrySpin(IsShadowPlayer(s), out var spin) || spin <= 0) return;
+        body["spin"] = spin;
+        Console.WriteLine($"[{s.Id}] spin={spin} (the receiver is that many draws behind)");
+    }
+
+    // the last resort, and the only one that generalises: read the price off the actor's own board rather than
+    // reconstructing it from a wire that does not carry it. NetworkSkill_cost_change.IsSend is false for any cost
+    // change whose owner card is in hand, so a discount that came from ANOTHER card is invisible to every route above
+    // this one. gated with the rest of the engine's opinions
+    int? Project(Session s, int idx, int cardId)
+    {
+        if (Engine.ShadowBridge.Role < Engine.ShadowBridge.EngineRole.AdviseCost) return null;
+        if (PairFor(s) is not {} pj || !pj.TryProject(IsShadowPlayer(s), idx, out var e)) return null;
+        if (e["cardId"]?.GetValue<int>() != cardId) return null;   // a different card at that index is a board that drifted
+        if (e["cost"]?.GetValue<int>() is not int cost || cost < 0) return null;
+        // the engine's own fold can only be trusted down to zero and up to the printed price; anything outside that is
+        // the board disagreeing with the master, not a discount
+        if (!_cardCosts.TryGetValue(cardId, out var cc) || cost > cc.BaseCost) return null;
+        Console.WriteLine($"[{s.Id}] cost idx={idx} card={cardId}: projected {cost} off the engine's board");
+        return cost;
     }
 
     // the actor asks a condition question on the wire and never answers it; the peer's CheckCondition discards its own
@@ -784,7 +1064,7 @@ public sealed class BattleHub
         if (specs.Count == 0) return;
 
         var pIdx = AsInt(body["playIdx"]) ?? -1;
-        if (!Engine.ShadowBridge.TryConditionAnswers(s.Id == _shadowPlayerId, pIdx, specs, out var answers)) return;
+        if (Board(s) is not {} bd2 || !bd2.TryConditionAnswers(true, pIdx, specs, out var answers)) return;
 
         var list = body["knownList"] as JsonArray;
         if (list is null) { list = new JsonArray(); body["knownList"] = list; }
@@ -903,7 +1183,7 @@ public sealed class BattleHub
                         'a' => CostOp.Add, 's' => CostOp.Set, 'd' => CostOp.HalfUp, 'D' => CostOp.HalfDown,
                         _ => (CostOp?)null,
                     };
-                    if (op is null) { GoCostBlind(owner, $"boosted idx {ix} has no known card"); continue; }
+                    if (op is null) { GoCostBlind(owner, $"idx {ix} carries a cost opcode I do not know"); continue; }
                     var mod = new CostMod(op.Value, c.Val);
                     if (AsStr(e["type"]) == "del") ModList(owner, ix).Remove(mod);
                     else
@@ -925,7 +1205,7 @@ public sealed class BattleHub
         cost = 0;
         if (relayCost is not null) return false;
         if (Engine.ShadowBridge.Role < Engine.ShadowBridge.EngineRole.AdviseCost) return false;
-        if (!Engine.ShadowBridge.TryCostOf(s.Id == _shadowPlayerId, idx, out var live)) return false;
+        if (Board(s) is not {} bd3 || !bd3.TryCostOf(true, idx, out var live)) return false;
         // a discount can only take a cost down, so a value outside that window is shadow drift and not a price
         if (!_cardCosts.TryGetValue(cardId, out var cc) || live < 0 || live > cc.BaseCost) return false;
         if (live != cc.BaseCost)
@@ -1016,10 +1296,6 @@ public sealed class BattleHub
 
     static string? AsStr(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
-    // turn handoff: a client emits Judge only when it is NOT its turn, reacting to the opponent's turn-end. echoing it
-    // back (turnState 0) runs the sender's JudgeOperation -> ControlTurnStartPlayer, handing it the turn. the owner guard
-    // keeps the handoff to once per turn since the client sends Judge for both the peer's TurnEnd and TurnEndFinal
-    // an extra turn is granted by the play itself, and nothing marks the Judge that follows
     readonly Dictionary<string, int> _extraTurns = new();
 
     void NoteExtraTurn(Session s, JsonObject body)
@@ -1075,7 +1351,7 @@ public sealed class BattleHub
         await taker.SendMsg("Judge", body);
     }
 
-    static object OpponentEnterPayload(Session visitor) => new
+    object OpponentEnterPayload(Session visitor) => new
     {
         resultCode = 1,
         userName = "player_" + visitor.ViewerId,
@@ -1087,7 +1363,7 @@ public sealed class BattleHub
         // client parses guild flags with ConvertValue.ToBool -> bool.Parse, which only accepts "True"/"False"
         isGuildMember = false,
         isGuildJoined = false,
-        oppoId = long.TryParse(visitor.ViewerId, out var v) ? v : 0,
+        oppoId = VidOf(visitor),
         isOfficial = 0,
         isFriend = 0,
         // Player.WinCount defaults to -1 (NO_GET_WIN). the visitor's EnterRoomServer doesn't reset it, so send battleNum
@@ -1161,10 +1437,15 @@ public sealed class BattleHub
             if (resend is int c2) await reporter.SendMsg("BattleFinish", new { result = c2 });
             return;
         }
-        await reporter.SendMsg("BattleFinish", new { result = reporterCode });
-        if (peer is not null) await peer.SendMsg("BattleFinish", new { result = peerCode });
-        await RecordWin(reporter, reporterCode);
-        EndShadow(reporter, reporterCode);
+        // a socket that closed first makes SendMsg throw, and the engine has to be released either way: a match left open
+        // answers the NEXT battle's questions off this one's board
+        try
+        {
+            await reporter.SendMsg("BattleFinish", new { result = reporterCode });
+            if (peer is not null) await peer.SendMsg("BattleFinish", new { result = peerCode });
+            await RecordWin(reporter, reporterCode);
+        }
+        finally { EndShadow(reporter, reporterCode); }
     }
 
     // the relay authors a BattleFinish only from a client JudgeResult/Retire/close, and a natural lethal produces none:
@@ -1231,14 +1512,17 @@ public sealed class BattleHub
     // are self-relative, so compare against whichever session the engine held as its BattlePlayer
     void EndShadow(Session reporter, int reporterCode)
     {
-        int relayCode = reporter.Id == _shadowPlayerId
+        int relayCode = IsShadowPlayer(reporter)
             ? reporterCode
-            : _finishCode.GetValueOrDefault(_shadowPlayerId ?? "", 0);
-        _shadowPlayerId = null;
-        Engine.ShadowBridge.End((engineCode, state) => Console.WriteLine(
+            : _finishCode.GetValueOrDefault(ShadowPlayerId(reporter) ?? "", 0);
+        var pair = PairFor(reporter);
+        _shadowOf.TryRemove(reporter.BattleId, out _);
+        pair?.End((name, engineCode, state) => Console.WriteLine(
             engineCode == relayCode
-                ? $"shadow: agrees, result {engineCode} | {state}"
-                : $"shadow: DISAGREES, relay {relayCode} vs engine {engineCode} | {state}"));
+                ? $"[{name}] agrees, result {engineCode} | {state}"
+                : $"[{name}] DISAGREES, relay {relayCode} vs engine {engineCode} | {state}"));
+        // back to the pool warm, so the next battle in this room does not pay an engine boot
+        Engine.ShadowBridge.Release(reporter.BattleId);
     }
 
     // RESULT_CODE names the RECIPIENT's own outcome: odd = *Win (they won), even = *Lose (they lost). settled by the
@@ -1263,8 +1547,8 @@ public sealed class BattleHub
         lock (_finishLock)
         {
             var (o, g) = _roomWins.GetValueOrDefault(reporter.BattleId);
-            // the room owner is whoever joined the battle group first, the same rule DeckFor uses
-            if (_sessions.ByBattle(reporter.BattleId).FirstOrDefault() == winner) o++; else g++;
+            // the same seat DeckFor reads, so the scoreboard cannot credit the other player's slot
+            if (IsOwner(winner)) o++; else g++;
             _roomWins[reporter.BattleId] = (o, g);
             (owner, guest) = (o, g);
         }
@@ -1290,11 +1574,15 @@ public sealed class BattleHub
             _finishCode[survivor.Id] = 201;
         }
         Console.WriteLine($"[{closed.Id}] peer closed -> {survivor.Id} wins by disconnect");
-        // self-relative: DisconnectWin is "you win, they dropped"
-        await survivor.SendAlive(peerOnline: false, peerGone: true);
-        await survivor.SendMsg("BattleFinish", new { result = 201 });
-        // 202 = "the other side lost", i.e. the survivor won
-        await RecordWin(survivor, 202);
+        try
+        {
+            // self-relative: DisconnectWin is "you win, they dropped"
+            await survivor.SendAlive(peerOnline: false, peerGone: true);
+            await survivor.SendMsg("BattleFinish", new { result = 201 });
+            // 202 = "the other side lost", i.e. the survivor won
+            await RecordWin(survivor, 202);
+        }
+        finally { EndShadow(survivor, 201); }
     }
 
     const int FallbackCard = 100111010;
@@ -1333,10 +1621,14 @@ public sealed class BattleHub
 
     // stable per (room, viewer) so a re-call inside the match reshuffles identically. string.GetHashCode is randomized
     // per run, so fold the chars by hand for a deterministic seed
-    readonly Dictionary<string, int> _deckSeed = new();   // (room, viewer) -> draw order, rolled fresh at each Matched
+    readonly Dictionary<string, int> _deckSeed = new();
     readonly Dictionary<string, int> _stableSeed = new(); // room -> the StableRandom stream both players share
 
-    static string DeckKey(Session s) => s.BattleId + " " + s.ViewerId;
+    // the seat, not the header viewer_id. it has to be stable across a mid-battle reconnect so the player keeps the
+    // deck it was dealt, and distinct between the two players - and viewer_id is not distinct: a copied install sends
+    // one cached value for both, so both keys collided, the second roll overwrote the first and the two players were
+    // dealt from the SAME shuffle
+    string DeckKey(Session s) => s.BattleId + (IsOwner(s) ? " owner" : " guest");
 
     // Matched rolls this. the fallback only covers a deck asked for before Matched, and folds the chars by hand because
     // string.GetHashCode is randomized per run and the two players must not disagree about a deck
@@ -1344,8 +1636,7 @@ public sealed class BattleHub
     {
         if (_deckSeed.TryGetValue(DeckKey(s), out var rolled)) return rolled;
         int h = 17;
-        foreach (var ch in s.BattleId) h = h * 31 + ch;
-        foreach (var ch in s.ViewerId) h = h * 31 + ch;
+        foreach (var ch in DeckKey(s)) h = h * 31 + ch;
         return h;
     }
 
@@ -1387,7 +1678,7 @@ public sealed class BattleHub
             rank = 1,
             classId = d?.ClassId ?? 1,
             charaId = d?.CharaId ?? 1,
-            viewerId = long.TryParse(s.ViewerId, out var v) ? v : 0,
+            viewerId = VidOf(s),
             // the API resolved this from name.txt / Steam and wrote it alongside the deck; only fall back if it didn't
             userName = string.IsNullOrEmpty(d?.UserName) ? "player_" + s.ViewerId : d.UserName,
             // the client reads its own selfInfo.fieldId as the stage (NetworkBattleManagerBase.CreateBackgroundId), so both
@@ -1405,7 +1696,7 @@ public sealed class BattleHub
             degreeId = -1,
             country_code = "NONE",
             isOfficial = 0,
-            oppoId = long.TryParse(peer.ViewerId, out var pv) ? pv : 0,
+            oppoId = VidOf(peer),
         };
     }
 
