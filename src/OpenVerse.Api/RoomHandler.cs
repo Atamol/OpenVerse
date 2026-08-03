@@ -25,7 +25,17 @@ public sealed class RoomHandler
         path.StartsWith("/shadowverse/open_room/", StringComparison.OrdinalIgnoreCase) ||
         path.StartsWith("/shadowverse/open_room_battle/", StringComparison.OrdinalIgnoreCase);
 
-    public string Handle(string path, string reqJson, string ownerUdid)
+    public string Handle(string path, string reqJson, string ownerUdid, string sourceIp = "")
+    {
+        if (sourceIp.Length > 0) _ipByUdid[ownerUdid] = sourceIp;
+        return HandleCore(path, reqJson, ownerUdid);
+    }
+
+    // the API is the only side that sees where a request came from, and it is the only discriminator both processes
+    // can agree on: the client picks its own viewer_id and two installs have been seen picking the same one
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _ipByUdid = new();
+
+    string HandleCore(string path, string reqJson, string ownerUdid)
     {
         using var doc = JsonDocument.Parse(reqJson);
         var root = doc.RootElement;
@@ -109,6 +119,7 @@ public sealed class RoomHandler
             LeaderSkinId = deck.LeaderSkinId,
             CardIds = deck.CardIdArray,
             UserName = _users.GetOrCreate(udid).Name,
+            SourceIp = _ipByUdid.GetValueOrDefault(udid, ""),
         });
     }
 
