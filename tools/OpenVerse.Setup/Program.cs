@@ -26,7 +26,7 @@ if (CmdHelper.HasFlag(args, Args.help))
 var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 var clientData = CmdHelper.ReadArg(args, Args.client)
     ?? Path.Combine(userProfile, "AppData", "LocalLow", "Cygames", "Shadowverse");
-var outDir = CmdHelper.ReadArg(args, Args.@out) ?? Path.Combine(AppContext.BaseDirectory, "data");
+var outDir = CmdHelper.ReadArg(args, Args.@out) ?? Layout.InServer("data");
 
 try { Console.OutputEncoding = Encoding.UTF8; } catch { }
 Console.WriteLine($"client: {clientData}");
