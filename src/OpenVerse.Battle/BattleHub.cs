@@ -13,11 +13,11 @@ public sealed class BattleHub
     readonly Dictionary<string, Session> _firstPlayer = new();
     readonly Dictionary<string, int> _fieldId = new();
     readonly Dictionary<string, int[]> _shuffled = new();
-    // per-session card ledger: Index -> cardId. seeded from the 40-card shuffle (idx 1..40 -> deck[idx-1]) then grown from
+    // per-session card ledger: Index -> cardId. Seeded from the 40-card shuffle (idx 1..40 -> deck[idx-1]) then grown from
     // add/metamorphose/copy-token/uList reveals so knownList resolves tokens (idx>40) and transforms, not just deck cards.
     // token idx space restarts at 41 per player, so each side keeps its own map. it is the knownList source of truth
     readonly Dictionary<string, Dictionary<int, int>> _ledger = new();
-    // return-to-deck reshuffle mirror. the client randomizes a card's deck slot via a XorShift seeded by idxChangeSeed and
+    // return-to-deck reshuffle mirror. The client randomizes a card's deck slot via a XorShift seeded by idxChangeSeed and
     // NEVER sends the new index (OnIndexChange is a local replay recorder), so the server replicates the same lockstep
     // stream to keep _ledger correct after a card goes back to the deck. keyed by Session.Id, per-battle flags by BattleId
     readonly Dictionary<string, XorShift> _rng = new();
@@ -29,7 +29,7 @@ public sealed class BattleHub
     readonly Dictionary<string, bool> _finished = new();
     readonly Dictionary<string, int> _finishCode = new();
     readonly Dictionary<string, (int Owner, int Guest)> _roomWins = new();
-    // who sat where, by BattleId = the room. the client tears the battle socket down between games, so from game 2 on
+    // who sat where, by BattleId = the room. The client tears the battle socket down between games, so from game 2 on
     // the reconnect order is a race between two remote players and the seat cannot be read off it. RoomCreate's sender
     // is the owner by definition and RoomEntry's is the visitor, so pin it there and keep it for the room's lifetime
     readonly ConcurrentDictionary<string, string> _ownerViewer = new();
@@ -39,10 +39,14 @@ public sealed class BattleHub
     readonly object _finishLock = new();
 
     readonly Dictionary<int, int> _baseCardIds;
-    // cardId -> base cost + per-boost discount, for pricing a revealed hand card
+    // cardId -> base cost + the per-charge cost step, for pricing a revealed hand card
     readonly Dictionary<int, CardCost> _cardCosts;
+    // Session -> idx -> concrete cost deltas the actor resolved and shipped (alter.cost). authoritative
     readonly Dictionary<string, Dictionary<int, List<CostMod>>> _costMods = new();
-    readonly Dictionary<string, Dictionary<int, int>> _boost = new();
+    // Session -> idx -> SpellChargeCount, which the wire spells "spellboost". it is a counter, NOT a discount: across
+    // the master, 100 cards turn a charge into a cost cut but 54 turn it into damage, tokens, healing or stat gains.
+    // only _cardCosts[id].SpellboostStep says which, so never read a charge here as "this card got cheaper"
+    readonly Dictionary<string, Dictionary<int, int>> _charges = new();
     readonly HashSet<string> _costBlind = new();
 
     public BattleHub(SessionManager sessions, BattleDeckStore decks, Dictionary<int, int>? baseCardIds = null,
@@ -63,11 +67,11 @@ public sealed class BattleHub
         return IsOwner(s) ? claimed : claimed + 1;
     }
 
-    // the WS "BattleId" header is the room_id (Room.RoomId). the pinned seat only has to be stable and distinct between
+    // The WS "BattleId" header is the room_id (Room.RoomId). The pinned seat only has to be stable and distinct between
     // the two sockets, so the header viewer_id works here even though it is unusable as a BattleDeckStore key
     bool IsOwner(Session s)
     {
-        // the API is the only side that sees where each player connected from, and it writes that alongside the deck.
+        // The API is the only side that sees where each player connected from, and it writes that alongside the deck.
         // the socket's own address settles the seat without trusting anything the client chose for itself
         if (!string.IsNullOrEmpty(s.RemoteIp))
         {
@@ -79,7 +83,7 @@ public sealed class BattleHub
                 if (s.RemoteIp == guestIp) return false;
             }
         }
-        // the header viewer_id only means anything while the two sockets carry DIFFERENT ones, and they do not always:
+        // The header viewer_id only means anything while the two sockets carry DIFFERENT ones, and they do not always:
         // the client sends its own cached value and two installs have been seen sending the same one. with one id for
         // both, every session matches the owner and both players get the owner's class, deck and name
         var peer = _sessions.Peer(s);
@@ -138,9 +142,9 @@ public sealed class BattleHub
                 await s.SendMsg("InitNetwork", new { });
                 break;
             case "RoomCreate":
-                // ReceiveNodeResultCode.Success = 1. Also need a synchronize msg back so PlayerControllerForOpponent.OnReceiveFast
+                // ReceiveNodeResultCode.Success = 1. also need a synchronize msg back so PlayerControllerForOpponent.OnReceiveFast
                 // sets ConnectRoomResult=SUCCESS and the room UI proceeds — the ACK alone doesn't do it.
-                // Room URIs aren't in IsMatchingURI, so we omit playSeq so the msg isn't stocked and reaches PlayReceiveData
+                // Room URIs aren't in IsMatchingURI, so playSeq is omitted and the msg reaches PlayReceiveData unstocked
                 PinSeat(s, isOwner: true);
                 if (ackId is int i2) await s.SendAckResult(i2, pubSeq, new { resultCode = 1 });
                 await s.SendMsg("RoomCreate", new { resultCode = 1 }, withPlaySeq: false);
@@ -175,7 +179,7 @@ public sealed class BattleHub
                 await HandleSwap(s, payload);
                 break;
             case "Echo":
-                // turn-start / action ack from the client. ack it so its stock queue advances, but never relay it
+                // turn-start / action ack from the client. Ack it so its stock queue advances, but never relay it
                 if (ackId is int iEc) await s.SendAck(iEc, pubSeq);
                 break;
             case "TurnStart":
@@ -204,14 +208,14 @@ public sealed class BattleHub
                 await HandleJudge(s, payload);
                 break;
             case "JudgeResult":
-                // the client reports its outcome here with no ack/pubSeq (payload["log"] = JUDGE_RESULT_STATUS). a real
+                // The client reports its outcome here with no ack/pubSeq (payload["log"] = JUDGE_RESULT_STATUS). A real
                 // server answers with a BattleFinish carrying a definitive result code, which is the only thing that sets
                 // _isJudgeResultReceive and lets the client leave the win/lose VFX. relaying to the peer would bounce forever
                 await FinalizeFromReport(s, AsInt(payload?["log"]) ?? 100);
                 break;
             case "SetupComplete":
                 if (ackId is int iSc) await s.SendAckResult(iSc, pubSeq, new { resultCode = 1 });
-                // isSelf=1 tells the sender's UI to mark their own slot ready. peer gets isSelf=0 so their opponent slot flips
+                // isSelf=1 tells the sender's UI to mark their own slot ready. Peer gets isSelf=0 so their opponent slot flips
                 await s.SendMsg("SetupComplete", new { resultCode = 1, isSelf = 1 }, withPlaySeq: false);
                 s.Ready = true;
                 var peerSc = _sessions.Peer(s);
@@ -304,11 +308,11 @@ public sealed class BattleHub
         if (peer is not null) await peer.SendMsg(uri, peerObj, withPlaySeq: false);
     }
 
-    // a peer that stopped answering for this long is gone as far as the match is concerned. the client's own BattleStop is
+    // A peer that stopped answering for this long is gone as far as the match is concerned. The client's own BattleStop is
     // 95s, so this has to fire well inside that or both sides just sit there
     public static readonly TimeSpan PeerSilence = TimeSpan.FromSeconds(45);
 
-    // off unless asked for. a real drop is obvious to both players anyway, and ending a live battle on a heartbeat this
+    // Off unless asked for. A real drop is obvious to both players anyway, and ending a live battle on a heartbeat this
     // relay had already been counting wrong is a far worse failure than the one it was added to fix
     static readonly bool DropOnSilence =
         Environment.GetEnvironmentVariable("OPENVERSE_PEER_TIMEOUT")?.Trim().ToLowerInvariant() is "1" or "true" or "on";
@@ -333,7 +337,8 @@ public sealed class BattleHub
         }
     }
 
-    // both SetupComplete: kick the client into the RoomReady flow, which triggers DoMatching HTTP then emits InitRoomBattle back to us
+    // both SetupComplete: kick the client into the RoomReady flow, which triggers DoMatching HTTP then emits
+    // InitRoomBattle back here
     async Task MaybeRoomReady(Session s)
     {
         var peer = _sessions.Peer(s);
@@ -342,7 +347,7 @@ public sealed class BattleHub
         await peer.SendMsg("RoomReady", new { resultCode = 1 }, withPlaySeq: false);
     }
 
-    // once both clients have emitted InitRoomBattle after DoMatching, we can finally send Matched to trigger StartBattleLoad
+    // once both clients have emitted InitRoomBattle after DoMatching, Matched can finally go out to trigger StartBattleLoad
     async Task MaybeMatched(Session s)
     {
         var peer = _sessions.Peer(s);
@@ -361,7 +366,7 @@ public sealed class BattleHub
         _fieldId[s.BattleId] = Random.Shared.Next(1, 8);
         _finished[s.BattleId] = false;
         _watch.Reset(s.BattleId);
-        // one reshuffle seed per player, kept for the whole battle. each seeds that player's own deck XorShift, handed out
+        // One reshuffle seed per player, kept for the whole battle. each seeds that player's own deck XorShift, handed out
         // mirror-swapped at Deal so a card added to a player's deck reshuffles identically on both clients and here
         int sA = RollSeed(), sB = RollSeed();
         _idxSeed[first.Id] = sA;
@@ -407,15 +412,17 @@ public sealed class BattleHub
         return true;
     }
 
-    // XorShift.IsActive requires seed != -1; any other int (incl 0) is a valid seed
+    // XorShift.IsActive requires seed != -1. Any other int (incl 0) is a valid seed
     static int RollSeed() { int s; do s = Random.Shared.Next(int.MinValue, int.MaxValue); while (s == -1); return s; }
 
-    const int StarterCard = 100111010;
+    // One id for every "I cannot name this card": the wire placeholder, unresolved deck padding, and the value the
+    // naming passes refuse to state. it must be the engine's dummy or the shadow and the client hold different cards
+    const int Placeholder = Engine.MirrorPair.Dummy;
     const int HandState = 10;  // NetworkCardPlaceState.Hand
 
     // both Loaded: BattleStart is the only matching-phase msg that flips status to Prepared and stops the 25s loadedTimeout.
     // send it with no playSeq so it plays immediately (IsNoStockData) and the first stocked synchronize (Deal) stays at 3.
-    // selfInfo+oppoInfo each need rank/classId/charaId or SetParameter throws and IsReady never latches.
+    // selfInfo+oppoInfo each need rank/classId/charaId or SetParameter throws and IsReady never latches
     async Task MaybeBattleStart(Session s)
     {
         var peer = _sessions.Peer(s);
@@ -438,7 +445,7 @@ public sealed class BattleHub
     {
         if (s.DealSent) return;
         s.DealSent = true;
-        // the seeds ride the Deal reply once, mirror-swapped: the client sets its self stream from idxChangeSeed and its
+        // The seeds ride the Deal reply once, mirror-swapped: the client sets its self stream from idxChangeSeed and its
         // opponent stream from oppoIdxChangeSeed, so each player's deck reshuffles from the same seed on both clients.
         // do not re-send them (would re-seed the client mid-stream). must be the Deal, not Matched/BattleStart, which the
         // matching-phase parser (SetNetworkInfo) drops these keys
@@ -451,15 +458,15 @@ public sealed class BattleHub
         });
     }
 
-    // client Swap carries idxList = abandoned deck slots. reply with fresh slots at those hand positions, then gate on both.
+    // client Swap carries idxList = abandoned deck slots. reply with fresh slots at those hand positions, then gate on both
     async Task HandleSwap(Session s, JsonNode? payload)
     {
         s.Redraws.Clear();
         if (payload?["idxList"] is JsonArray idxList)
             foreach (var n in idxList)
             {
-                // idxList holds abandoned deck Indices (1-based). the opening hand dealt deck slot k at hand position k-1,
-                // so an abandoned Index maps to hand position Index-1; the replacement comes from a fresh deck slot
+                // idxList holds abandoned deck Indices (1-based). The opening hand dealt deck slot k at hand position k-1,
+                // so an abandoned Index maps to hand position Index-1. The replacement comes from a fresh deck slot
                 int abandoned = n?.GetValue<int>() ?? 0;
                 s.Redraws[abandoned - 1] = s.NextDeckIdx++;
             }
@@ -468,7 +475,7 @@ public sealed class BattleHub
         var peer = _sessions.Peer(s);
         if (peer is null || !peer.MulliganDone) return;
         // reshuffle is eligible only after mulligan (mulligan returns keep their Index, no enroll). seed each deck mirror =
-        // all idx minus the 3 kept-hand indices (opening slots 1..3, replaced per redraw). the DeckCard objects here are the
+        // all idx minus the 3 kept-hand indices (opening slots 1..3, replaced per redraw). The DeckCard objects here are the
         // ones the reshuffle mutates and enrolls by reference
         _mulliganEnd[s.BattleId] = true;
         foreach (var x in new[] { s, peer })
@@ -481,17 +488,17 @@ public sealed class BattleHub
         }
         // both submitted: Ready reveals each side the opponent's post-mulligan hand. no server TurnStart follows: the first
         // player self-starts turn 1 (client StartBattle IsFirst path) and emits its own TurnStart, which the relay forwards
-        // to the peer. a received TurnStart always runs ControlTurnStartOpponent, so sending one to the first player would
+        // to the peer. A received TurnStart always runs ControlTurnStartOpponent, so sending one to the first player would
         // make it process its own turn as the opponent's, flip IsSelfTurn off, and stall until the 95s BattleStop
         await s.SendMsg("Ready", new { cards = RedrawCards(peer, isSelf: 0) });
         await peer.SendMsg("Ready", new { cards = RedrawCards(s, isSelf: 0) });
         BeginShadow(s, peer);
     }
 
-    // replacement cards for a session's redraws; isSelf tags whose hand this is from the receiver's view.
-    // own redraws show the real (shuffled) card at the fresh deck slot; the opponent's stay hidden as the placeholder
+    // replacement cards for a session's redraws. isSelf tags whose hand this is from the receiver's view.
+    // own redraws show the real (shuffled) card at the fresh deck slot. The opponent's stay hidden as the placeholder
     object[] RedrawCards(Session owner, int isSelf) =>
-        owner.Redraws.Select(kv => (object)new { idx = kv.Value, cardId = isSelf == 1 ? ShuffledDeckFor(owner)[kv.Value - 1] : StarterCard, isSelf, pos = kv.Key, to = HandState }).ToArray();
+        owner.Redraws.Select(kv => (object)new { idx = kv.Value, cardId = isSelf == 1 ? ShuffledDeckFor(owner)[kv.Value - 1] : Placeholder, isSelf, pos = kv.Key, to = HandState }).ToArray();
 
     object[] DealCards(Session s)
     {
@@ -499,17 +506,17 @@ public sealed class BattleHub
         var cards = new List<object>();
         for (int isSelf = 1; isSelf >= 0; isSelf--)
             for (int i = 0; i < 3; i++)
-                cards.Add(new { idx = i + 1, cardId = isSelf == 1 ? deck[i] : StarterCard, isSelf, pos = i, to = HandState });
+                cards.Add(new { idx = i + 1, cardId = isSelf == 1 ? deck[i] : Placeholder, isSelf, pos = i, to = HandState });
         return cards.ToArray();
     }
 
-    // relay a battle action to the peer on its own contiguous playSeq stream. the peer re-simulates the play from playIdx
+    // relay a battle action to the peer on its own contiguous playSeq stream. The peer re-simulates the play from playIdx
     // (orderList/battleCode are dropped on receive) and resolves isSelf against the shared index namespace, where isSelf=1
     // already means the emitter = the peer's BattleEnemy. flipping isSelf sends board-interfering effects to the wrong
     // side, and no index needs remapping since both clients share the deck seeds.
     // BUT the payload is NOT pure passthrough: wherever the client's own send format differs from its own receive format,
-    // the real server converted it and we have to as well (knownList/keyAction/targetList below). "the peer reads isSelf"
-    // only holds for keys whose parse actually reads it - targetList's live parse does not, which is why it is renamed.
+    // the real server converted it, so this side has to as well (knownList/keyAction/targetList below). "the peer reads isSelf"
+    // only holds for keys whose parse actually reads it - targetList's live parse does not, which is why it is renamed
     async Task RelayBattle(Session s, string uri, JsonNode? payload)
     {
         var peer = _sessions.Peer(s);
@@ -585,7 +592,7 @@ public sealed class BattleHub
             ShuffledDeckFor(first), ShuffledDeckFor(second),
             OpeningHandIdx(first), OpeningHandIdx(second),
             l => Console.WriteLine($"[{first.Id}] {l}"));
-        // the clients reshuffle a card's deck slot when it goes back, off idxChangeSeed, and the shadow never sees the
+        // The clients reshuffle a card's deck slot when it goes back, off idxChangeSeed, and the shadow never sees the
         // Deal that carries it. ShadowMatch.SetDeckMirror installs one, but doing so measurably worsens the only
         // end-to-end check there is (ShadowCostFidelityTests goes 3 charges short), so leave it off until a capture
         // shows which way round is in step with the players
@@ -609,9 +616,9 @@ public sealed class BattleHub
     }
 
     // track each deck's index set from the move entries and enroll cards that land in the deck, so a later flush reshuffles
-    // them. a card enters the deck as a move to=Deck(0) (returns + a token's companion move); leaves as a move from=Deck.
+    // them. A card enters the deck as a move to=Deck(0) (returns + a token's companion move); leaves as a move from=Deck.
     // the add/uList reveals in UpdateLedger set cardIds only and never enroll, so enrollment has a single channel
-    // Observed from the playerParam entries the clients broadcast, not simulated. MaybeFinalizeNaturalFinish decides
+    // observed from the playerParam entries the clients broadcast, not simulated. MaybeFinalizeNaturalFinish decides
     // matches off Life, so a wrong value here loses someone a game
     public sealed class Vitals
     {
@@ -623,7 +630,7 @@ public sealed class BattleHub
 
     public Vitals VitalsFor(Session s) => _vitals.TryGetValue(s.Id, out var v) ? v : _vitals[s.Id] = new Vitals();
 
-    // damage/heal/addPP arrive as magnitudes (the sender takes Math.Abs), so the key carries the sign. set/cemetery/maxPP
+    // damage/heal/addPP arrive as magnitudes (the sender takes Math.Abs), so the key carries the sign. Set/cemetery/maxPP
     // are absolute. isSelf is sender-relative, the same convention the move entries use
     void TrackVitals(Session s, JsonObject body)
     {
@@ -678,8 +685,8 @@ public sealed class BattleHub
             }
     }
 
-    // flush the reshuffle queues at exactly the client's 6 completion events: every PlayActions (play/evolve/attack/fusion
-    // complete), TurnStart, and once per turn end (TurnEndActions if present, else TurnEnd). the sender owns the trigger
+    // Flush the reshuffle queues at exactly the client's 6 completion events: every PlayActions (play/evolve/attack/fusion
+    // complete), TurnStart, and once per turn end (TurnEndActions if present, else TurnEnd). The sender owns the trigger
     void MaybeFlush(Session s, string uri)
     {
         var battle = s.BattleId;
@@ -696,8 +703,8 @@ public sealed class BattleHub
         if (_sessions.Peer(s) is { } peer) FlushQueue(peer);
     }
 
-    // drain a player's queue: each in-deck card in insertion order draws one Next() from that player's stream and swaps its
-    // deck slot with the changeInt-th card, mirroring AddToDeckCardIndexChange. the two queues use independent streams so the
+    // Drain a player's queue: each in-deck card in insertion order draws one Next() from that player's stream and swaps its
+    // deck slot with the changeInt-th card, mirroring AddToDeckCardIndexChange. The two queues use independent streams so the
     // owner-first order is not load-bearing across them, but order WITHIN a queue is (each consumes one Next)
     void FlushQueue(Session owner)
     {
@@ -716,7 +723,7 @@ public sealed class BattleHub
             (ledger[a], ledger[t]) = (ledger.GetValueOrDefault(t), ledger.GetValueOrDefault(a));
             // the cost/boost state is keyed by index too, so it has to ride along or a later reveal prices the wrong card
             var cm = ModsFor(owner);
-            var bm = BoostFor(owner);
+            var bm = ChargesFor(owner);
             (cm[a], cm[t]) = (cm.GetValueOrDefault(t) ?? new List<CostMod>(), cm.GetValueOrDefault(a) ?? new List<CostMod>());
             (bm[a], bm[t]) = (bm.GetValueOrDefault(t), bm.GetValueOrDefault(a));
             dc.Index = t; tgt.Index = a;
@@ -732,14 +739,14 @@ public sealed class BattleHub
     const int PlayHandSelect = 31;
     const int Fusion = 40;
 
-    // the one place the client's own send and receive formats disagree, so the real server must have converted it: the
+    // The one place the client's own send and receive formats disagree, so the real server must have converted it: the
     // sender always nests the selection as selectCard:{cardId|cardIdx:[...], open:N}, but the receiver wants selectCard
     // to BE the array and BurialRate's cardIdx hoisted onto the entry. passing the nested form through NREs the peer's
     // ConvertToListInt, which drops the whole play and freezes its receive sequence - every later message strands behind
     // the gap. `open` has no reader anywhere in the client, which is what gives the server-side conversion away
     // the sender only ever emits `targetList`, but the receiver's targetList case hardcodes isWatch:true and that branch
     // reads `vid` - which no client writes - so isSelf keeps its `false` initializer and every sender-owned target
-    // resolves against the RECEIVER's own board. the isSelf-reading parse is reached only via `oppoTargetList`, a key
+    // resolves against the RECEIVER's own board. The isSelf-reading parse is reached only via `oppoTargetList`, a key
     // nothing in the client writes: the real server renamed it per recipient. rename rather than copy, or dictionary
     // order decides which parse wins. never inject `vid` instead - its handler is null in live play and would throw
     public static void NormalizeTargetList(JsonObject body)
@@ -766,7 +773,7 @@ public sealed class BattleHub
     const int RidingState = 70;
     const int UniteState = 90;
 
-    // NetworkCardPlaceState, decided once for every destination rather than one bug report at a time. a card that lands
+    // NetworkCardPlaceState, decided once for every destination rather than one bug report at a time. A card that lands
     // somewhere both players can look at has to be named, or the peer builds the entry off its own forty dummies and
     // shows a Goblin. 葬送 (hand -> cemetery) is the one that surfaced it, and it is the second commonest move in the
     // shipped capture, so it had been wrong the whole time.
@@ -826,7 +833,7 @@ public sealed class BattleHub
 
             var to = AsInt(u["to"]);
             var from = AsInt(u["from"]);
-            // hand -> field is the play route InjectKnownCard owns; hand -> cemetery/banish is 葬送 and needs naming
+            // Hand -> field is the play route InjectKnownCard owns. Hand -> cemetery/banish is 葬送 and needs naming
             var why = !PublicDestination(to) ? "that destination is not public"
                     : from is null ? "the actor did not say where it came from"
                     : from == HandState && to == FieldState ? null      // InjectKnownCard's route, not a gap
@@ -844,7 +851,7 @@ public sealed class BattleHub
             // resolve once per index: the resolver may reach the engine, and asking twice for the same slot would
             // double that cost for no gain
             var ids = idxs.Select(resolve).ToList();
-            // all-or-nothing: an unresolved index (the -99 shortage sentinel included) keeps the known-safe decline.
+            // All-or-nothing: an unresolved index (the -99 shortage sentinel included) keeps the known-safe decline.
             // this is the one that actually shows a Goblin - the destination is public, so the peer WILL draw the entry
             // off its own deck - so it is the loudest of the declines
             if (idxs.Count == 0 || ids.Any(c => c == 0))
@@ -870,7 +877,7 @@ public sealed class BattleHub
         if (split) body["uList"] = next;
     }
 
-    // the client never emits knownList (the real server injects it): on a hand play the peer resolves the played card via
+    // The client never emits knownList (the real server injects it): on a hand play the peer resolves the played card via
     // GetPlayCard() = knownCardList.First(c => c.Index == playIdx), so with no knownList it dereferences null and NREs
     // before rendering, logging, or echoing - every opponent hand play is silently dropped. knownList is also the only
     // channel that reveals the face-down enemy card. synthesize the one entry from the sender's deck (Index == deck slot)
@@ -880,7 +887,7 @@ public sealed class BattleHub
         if (body["playIdx"]?.GetValue<int>() is not int pIdx) return;
         if (!LedgerFor(s).TryGetValue(pIdx, out var cardId))
         {
-            // a card that entered hand during the match has no deck slot, and the actor sends cardId 0 for anything the
+            // A card that entered hand during the match has no deck slot, and the actor sends cardId 0 for anything the
             // peer cannot see, so the ledger never learns it. declining here drops the whole play on the peer, so ask
             // the engine, which has been playing the same match
             if (Board(s) is not {} bd0 || !bd0.TryCardIdOf(true, pIdx, out cardId) || cardId == 0) return;
@@ -904,9 +911,9 @@ public sealed class BattleHub
         // the peer throws its face-down placeholder away and rebuilds the card from cardId, so it starts at charge 0
         // (CardDataModel.Spellboost defaults to -1, which SetSpellChargeCount ignores) and every skill reading the
         // count then behaves differently on the two machines
-        if (!_costBlind.Contains(s.Id) && BoostFor(s).GetValueOrDefault(pIdx) is var charges && charges > 0)
+        if (!_costBlind.Contains(s.Id) && ChargesFor(s).GetValueOrDefault(pIdx) is var charges && charges > 0)
             entry["spellboost"] = charges;
-        // the highlander bit rides this same entry: the peer reads it as a global Any(c => c.IsHighlander) over
+        // The highlander bit rides this same entry: the peer reads it as a global Any(c => c.IsHighlander) over
         // knownList. never add activate/count/callCount/param alongside it - that reroutes the whole entry into
         // SkillConditionCheckList, out of knownList, and the bit becomes invisible
         if (TryReadHighlanderSpec(body, out var excludeBase) && TryIsHighlanderDeck(s, excludeBase, out var isHl) && isHl)
@@ -917,10 +924,10 @@ public sealed class BattleHub
         body["knownList"] = reveal;
     }
 
-    // a token minted mid-match has no deck slot, so the ledger - which is built from the deck - can never name it, and
-    // its index runs past 40. the actor DOES state what it is, in orderList: {"add":{"idx":[41],"card":{"cardId":N}}}.
+    // A token minted mid-match has no deck slot, so the ledger - which is built from the deck - can never name it, and
+    // its index runs past 40. The actor DOES state what it is, in orderList: {"add":{"idx":[41],"card":{"cardId":N}}}.
     // orderList has no readers on the client, so that identity dies on arrival unless the relay moves it somewhere the
-    // client does read. learn it here, before every naming pass, and the rest of the pipeline can name it like any card
+    // client does read. Learn it here, before every naming pass, and the rest of the pipeline can name it like any card
     void LearnAddedCards(Session s, JsonObject body)
     {
         if (body["orderList"] is not JsonArray ol) return;
@@ -939,11 +946,11 @@ public sealed class BattleHub
         }
     }
 
-    // the rule that generalises. naming by DESTINATION was the wrong axis: a fusion consumes its ingredients into
-    // FusionIngredient(60), emits no `move` at all, and AddMovedCards cannot see it. name by RESOLUTION instead - every
+    // The rule that generalises. naming by DESTINATION was the wrong axis: a fusion consumes its ingredients into
+    // FusionIngredient(60), emits no `move` at all, and AddMovedCards cannot see it. Name by RESOLUTION instead - every
     // actor-side index this message makes the peer look up.
     // left unnamed, the peer resolves the index against its own forty placeholders, and any local check that reads a
-    // PROPERTY of that card takes the other branch. the fusion of 119241030 wants {tribe=lord} and a placeholder is
+    // PROPERTY of that card takes the other branch. The fusion of 119241030 wants {tribe=lord} and a placeholder is
     // TribeType.ALL, so IsFusionable is false, BattlePlayerBase.Fusion returns before depositing anything, and every
     // later condition reading fusion_ingrediented_card_list is false on that machine forever after.
     // OperateReceiveChecker has no FUSION case, so the message passes its check either way, which is why this went
@@ -968,7 +975,7 @@ public sealed class BattleHub
             if (!named.Add(ix)) continue;
             var id = LedgerFor(s).TryGetValue(ix, out var c) ? c
                    : Board(s) is {} bd && bd.TryCardIdOf(true, ix, out var fromEngine) ? fromEngine : 0;
-            if (id == FallbackCard) id = 0;
+            if (id == Placeholder) id = 0;
             if (id == 0)
             {
                 Console.WriteLine($"[{s.Id}] NOT NAMED idx={ix}, which play {playIdx} makes the peer resolve: "
@@ -980,7 +987,7 @@ public sealed class BattleHub
         }
     }
 
-    // knownList is a LIST and the peer looks entries up by index, but the relay only ever put the played card in it. a
+    // knownList is a LIST and the peer looks entries up by index, but the relay only ever put the played card in it. A
     // play that also moves ANOTHER card somewhere public - 葬送 entombing a follower chosen from hand is the one that
     // surfaced this - left that card unnamed, so the peer resolved it against its own forty dummies and drew a Goblin.
     // the moves ride orderList, which no client reads, so this is the only channel that can carry the identity
@@ -1002,10 +1009,10 @@ public sealed class BattleHub
                 if (!named.Add(ix)) continue;
                 var id = LedgerFor(s).TryGetValue(ix, out var c) ? c
                        : Board(s) is {} bd && bd.TryCardIdOf(true, ix, out var e) ? e : 0;
-                // the filler is what a deck the relay never resolved is padded with, and it is the very card the peer
+                // The filler is what a deck the relay never resolved is padded with, and it is the very card the peer
                 // would have shown anyway. stating it would turn "I do not know" into "it is a Goblin", which is the
                 // same picture with none of the doubt
-                if (id == FallbackCard) id = 0;
+                if (id == Placeholder) id = 0;
                 if (id == 0)
                 {
                     Console.WriteLine($"[{s.Id}] NOT NAMED idx={ix} moving {Zone(from)}->{Zone(to)} alongside play {playIdx}: "
@@ -1018,9 +1025,9 @@ public sealed class BattleHub
         }
     }
 
-    // the receiver re-simulates the actor's action against forty dummies, so its StableRandom cursor lands short of the
+    // The receiver re-simulates the actor's action against forty dummies, so its StableRandom cursor lands short of the
     // actor's. spin is how far, and OperateReceive burns exactly that many draws to catch up. it is forward-only and
-    // was the original repair channel; the relay has never sent it, so every random effect left the two cursors apart.
+    // was the original repair channel. The relay has never sent it, so every random effect left the two cursors apart.
     // both numbers only exist once each client has a board of its own
     void InjectSpin(Session s, JsonObject body)
     {
@@ -1031,7 +1038,7 @@ public sealed class BattleHub
         Console.WriteLine($"[{s.Id}] spin={spin} (the receiver is that many draws behind)");
     }
 
-    // the last resort, and the only one that generalises: read the price off the actor's own board rather than
+    // The last resort, and the only one that generalises: read the price off the actor's own board rather than
     // reconstructing it from a wire that does not carry it. NetworkSkill_cost_change.IsSend is false for any cost
     // change whose owner card is in hand, so a discount that came from ANOTHER card is invisible to every route above
     // this one. gated with the rest of the engine's opinions
@@ -1041,16 +1048,16 @@ public sealed class BattleHub
         if (PairFor(s) is not {} pj || !pj.TryProject(IsShadowPlayer(s), idx, out var e)) return null;
         if (e["cardId"]?.GetValue<int>() != cardId) return null;   // a different card at that index is a board that drifted
         if (e["cost"]?.GetValue<int>() is not int cost || cost < 0) return null;
-        // the engine's own fold can only be trusted down to zero and up to the printed price; anything outside that is
+        // The engine's own fold can only be trusted down to zero and up to the printed price. anything outside that is
         // the board disagreeing with the master, not a discount
         if (!_cardCosts.TryGetValue(cardId, out var cc) || cost > cc.BaseCost) return null;
         Console.WriteLine($"[{s.Id}] cost idx={idx} card={cardId}: projected {cost} off the engine's board");
         return cost;
     }
 
-    // the actor asks a condition question on the wire and never answers it; the peer's CheckCondition discards its own
+    // The actor asks a condition question on the wire and never answers it. The peer's CheckCondition discards its own
     // reading and returns the (absent) injected value, so the skill silently does not fire - 169 receive-gated skills
-    // are in that state. the engine plays the same match, so it answers what the acting engine asked itself.
+    // are in that state. The engine plays the same match, so it answers what the acting engine asked itself.
     // runs before the peer send and the shadow ingests after, so the engine still holds the pre-play board its
     // played-card exclusion is written against
     void InjectConditionAnswers(Session s, string uri, JsonObject body)
@@ -1072,9 +1079,9 @@ public sealed class BattleHub
         // entry out of knownCardList and the cardId/cost it carries would be lost
         foreach (var a in answers) list.Add(a!.DeepClone());
 
-        // the flag and the condition channel are mutually exclusive per card index: once any condition entry exists
+        // The flag and the condition channel are mutually exclusive per card index: once any condition entry exists
         // for an index, the peer sends every condition skill on that card down the injected-answer branch and never
-        // reaches the highlander flag. the engine answers check_highlander itself, so drop the now-dead flag
+        // reaches the highlander flag. The engine answers check_highlander itself, so drop the now-dead flag
         var answered = answers.Select(a => AsInt(a?["idx"])).Where(i => i is not null).ToHashSet();
         foreach (var e in list)
             if (e is JsonObject eo2 && eo2.ContainsKey("highlander") && answered.Contains(AsInt(eo2["idx"])))
@@ -1083,10 +1090,10 @@ public sealed class BattleHub
         Console.WriteLine($"[{s.Id}] engine answered {answers.Count} of {specs.Count} skill conditions");
     }
 
-    // the actor sends the check spec but never its result - only a server-injected knownList carries it, so without
+    // The actor sends the check spec but never its result - only a server-injected knownList carries it, so without
     // this every highlander skill silently fails to activate on the opponent. recognize on `type` alone: check_highlander
     // never ships a `condition`, and the compare stays client-side (it negates itself via num == flag2), so the relay
-    // reports ground truth and must not invert. false = decline, which leaves today's (correct-for-non-highlander) default
+    // reports ground truth and must not invert. False = decline, which leaves today's (correct-for-non-highlander) default
     bool TryReadHighlanderSpec(JsonObject body, out int excludeBase)
     {
         excludeBase = -1;
@@ -1132,13 +1139,13 @@ public sealed class BattleHub
     readonly record struct CostMod(CostOp Op, int Val);
 
     Dictionary<int, List<CostMod>> ModsFor(Session s) => _costMods.TryGetValue(s.Id, out var m) ? m : _costMods[s.Id] = new();
-    Dictionary<int, int> BoostFor(Session s) => _boost.TryGetValue(s.Id, out var m) ? m : _boost[s.Id] = new();
+    Dictionary<int, int> ChargesFor(Session s) => _charges.TryGetValue(s.Id, out var m) ? m : _charges[s.Id] = new();
     List<CostMod> ModList(Session s, int ix) => ModsFor(s).TryGetValue(ix, out var l) ? l : ModsFor(s)[ix] = new();
 
     // deltas ride as an opcode char plus a value, e.g. "a3" / "s2" / "d2"
     static (char Op, int Val)? ParseDelta(string? v) => v is { Length: > 1 } && int.TryParse(v[1..], out var n) ? (v[0], n) : null;
 
-    // the peer drops orderList wholesale, so every cost change the actor ALREADY RESOLVED (alter.cost carries a concrete
+    // The peer drops orderList wholesale, so every cost change the actor ALREADY RESOLVED (alter.cost carries a concrete
     // delta - the actor evaluates the formula itself) and every spellboost delta die on the floor. mirror both per idx so
     // InjectKnownCard can state the price the real server used to state
     // going blind is permanent for the match and silently drops every later price to the peer, so say why the first time
@@ -1159,7 +1166,7 @@ public sealed class BattleHub
             if (cd is null && bd is null) continue;
             var owner = (AsInt(e["isSelf"]) ?? 1) == 0 ? peer : s;
             if (owner is null) continue;
-            // a group idx ("gN") is a filter spec the real server evaluated against the board. with no board a missed
+            // A group idx ("gN") is a filter spec the real server evaluated against the board. with no board a missed
             // modifier would turn a later emitted cost into a WRONG absolute pin - worse than saying nothing - so stop
             // pricing this player for the rest of the match
             if (AsStr(e["idx"]) is not null) { GoCostBlind(owner, $"group idx {AsStr(e["idx"])}"); continue; }
@@ -1168,10 +1175,10 @@ public sealed class BattleHub
                 if (bd is { } b)
                 {
                     // "a"+addCount, or "s"+target for diff_charge which raises to N and skips when already there
-                    var cur = BoostFor(owner).GetValueOrDefault(ix);
+                    var cur = ChargesFor(owner).GetValueOrDefault(ix);
                     var add = b.Op == 's' ? Math.Max(0, b.Val - cur) : b.Val;
                     if (add <= 0) continue;
-                    BoostFor(owner)[ix] = cur + add;
+                    ChargesFor(owner)[ix] = cur + add;
                     if (!LedgerFor(owner).TryGetValue(ix, out var bcid) || !_cardCosts.TryGetValue(bcid, out var bcc))
                     { GoCostBlind(owner, $"boosted idx {ix} has no known card"); continue; }
                     if (bcc.SpellboostStep > 0) ModList(owner, ix).Add(new CostMod(CostOp.Add, -add * bcc.SpellboostStep));
@@ -1215,15 +1222,17 @@ public sealed class BattleHub
         return true;
     }
 
-    // mirror BattleCardBase.Cost: fold the non-half modifiers, then the halves, then clamp at 0. false = say nothing,
-    // which leaves the peer at the base cost (today's behaviour) rather than pinning a value we cannot prove
+    // mirror BattleCardBase.Cost: fold the non-half modifiers, then the halves, then clamp at 0. False = say nothing,
+    // which leaves the peer at the base cost (today's behaviour) rather than pinning a value nothing can prove
     bool TryFinalCost(Session s, int idx, int cardId, out int cost)
     {
         cost = 0;
         if (_cardCosts.Count == 0 || _costBlind.Contains(s.Id)) return false;
         if (!_cardCosts.TryGetValue(cardId, out var cc)) return false;
-        // boosted a card whose discount rule we could not read: decline rather than emit an unboosted pin
-        if (BoostFor(s).GetValueOrDefault(idx) > 0 && cc.SpellboostStep == 0) return false;
+        // A card whose discount rule I could not read: decline rather than emit an unboosted pin. step 0 does NOT
+        // belong here - a charge lands on every card in the target set, discount or not, so treating "charged" as
+        // "unpriceable" discarded real modifiers and the peer then billed base cost and refused the play at PPover
+        if (ChargesFor(s).GetValueOrDefault(idx) > 0 && cc.SpellboostStep == CardCostMap.UnreadableStep) return false;
         var mods = ModsFor(s).GetValueOrDefault(idx);
         if (mods is null || mods.Count == 0) return false;  // nothing touched it, so the base cost is already right
         var n = cc.BaseCost;
@@ -1237,7 +1246,7 @@ public sealed class BattleHub
         return true;
     }
 
-    // idx -> cardId for a session, seeded from its shuffled deck (idx 1..40). for a token-free match this equals the old
+    // idx -> cardId for a session, seeded from its shuffled deck (idx 1..40). For a token-free match this equals the old
     // deck[idx-1] lookup so the simple path is unchanged
     Dictionary<int, int> LedgerFor(Session s)
     {
@@ -1250,7 +1259,7 @@ public sealed class BattleHub
     }
 
     // fold a relayed message's card reveals into the ledger so a later play at those indices resolves. each entry's isSelf
-    // says whose card it is: 1 = the sender's own, 0 = the peer's (token idx space is per-player). call it AFTER the knownList
+    // says whose card it is: 1 = the sender's own, 0 = the peer's (token idx space is per-player). Call it AFTER the knownList
     // for this message is injected, since the played card's identity is as-of prior messages
     void UpdateLedger(Session s, JsonObject body)
     {
@@ -1273,7 +1282,7 @@ public sealed class BattleHub
                     foreach (var ix in ReadIdxList(u["idxList"] ?? u["idx"])) t[ix] = cid;
     }
 
-    // add entry card sub-dict: plain {cardId} sets it directly; copy {baseIdx} inherits the source card's id (array order
+    // Add entry card sub-dict: plain {cardId} sets it directly. Copy {baseIdx} inherits the source card's id (array order
     // guarantees the base add landed first); choice {candidates} has no id yet and resolves later via a metamorphose
     static void ApplyAdd(Dictionary<int, int> t, JsonNode? idx, JsonObject? card)
     {
@@ -1315,7 +1324,7 @@ public sealed class BattleHub
 
     // normally the sender, since a client only emits Judge when it is not its turn. an extra turn inverts that: the
     // caster ends its turn like any other, so the OPPONENT emits the Judge and the turn has to go back to the caster.
-    // echoing to the sender instead leaves the caster with a greyed-out end-turn button. null = a duplicate to drop
+    // echoing to the sender instead leaves the caster with a greyed-out end-turn button. Null = a duplicate to drop
     Session? TurnGoesTo(Session s)
     {
         var peer = _sessions.Peer(s);
@@ -1366,14 +1375,14 @@ public sealed class BattleHub
         oppoId = VidOf(visitor),
         isOfficial = 0,
         isFriend = 0,
-        // Player.WinCount defaults to -1 (NO_GET_WIN). the visitor's EnterRoomServer doesn't reset it, so send battleNum
+        // player.WinCount defaults to -1 (NO_GET_WIN). The visitor's EnterRoomServer doesn't reset it, so send battleNum
         // to make the switch call ReceiveWinCount and flip both slots to 0
         battleNum = 1,
         ownerWin = 0,
         guestWin = 0,
     };
 
-    // decide the finish from the reporter's JUDGE_RESULT_STATUS. only codes that are a mutually-derivable end finalize;
+    // decide the finish from the reporter's JUDGE_RESULT_STATUS. only codes that are a mutually-derivable end finalize,
     // disconnect-checks (302) and unilateral timeout/offline victory claims (300/301/400/...) return null so a transient
     // relay stall can't end a live game (a real server cross-checks those, an engine-less relay can't).
     // RESULT_CODE is SELF-relative: RetireWin means "you win, they retired". (JudgeResultReceive passes a
@@ -1386,7 +1395,7 @@ public sealed class BattleHub
         var (rep, pr) = DecideResult(log);
         if (rep != 0) { await Finalize(s, rep, pr); return; }
 
-        // the client only sends this once it has decided the battle is over, and repeats it until a BattleFinish
+        // The client only sends this once it has decided the battle is over, and repeats it until a BattleFinish
         // answers. dropping an unrecognised code leaves both clients doing that forever, which is worse than being
         // wrong about who won, so once BOTH have reported, answer from the life the relay tracked
         _reported.Add(s.Id);
@@ -1402,7 +1411,7 @@ public sealed class BattleHub
         else await Finalize(s, owner == s ? 102 : 101, owner == s ? 101 : 102);
     }
 
-    // (reporterCode, peerCode); (0,0) means "not an adjudicable end here, do nothing". reporter of a neutral life/deckout
+    // (reporterCode, peerCode); (0,0) means "not an adjudicable end here, do nothing". Reporter of a neutral life/deckout
     // is the loser (the non-active defender reports while the winner waits on its own BattleFinish)
     static (int reporter, int peer) DecideResult(int log) => log switch
     {
@@ -1448,7 +1457,7 @@ public sealed class BattleHub
         finally { EndShadow(reporter, reporterCode); }
     }
 
-    // the relay authors a BattleFinish only from a client JudgeResult/Retire/close, and a natural lethal produces none:
+    // The relay authors a BattleFinish only from a client JudgeResult/Retire/close, and a natural lethal produces none:
     // the winner emits only TurnEndFinal then blocks in the disconnect-wait dialog, and the loser's JudgeResult(100)
     // rides a TurnEndFinal->Judge->echo->JudgeOperation handshake the passthrough relay never completes, so nothing
     // decides. author it from the leader life TrackVitals already follows, off the killing action. gated strictly on
@@ -1478,9 +1487,9 @@ public sealed class BattleHub
     readonly Dictionary<string, (Session Reporter, int ReporterCode, int PeerCode)> _pendingFinish = new();
     static readonly TimeSpan LethalGrace = TimeSpan.FromSeconds(6);
 
-    // the killing blow still has to play out. sending BattleFinish from the same handler that relayed it cuts straight
+    // The killing blow still has to play out. sending BattleFinish from the same handler that relayed it cuts straight
     // to the result screen, so the loser never sees the attack that killed them (the winner's TurnEndFinal does not
-    // even reach the relay until after that). the timer is there so a winner that never sends one cannot leave the
+    // even reach the relay until after that). The timer is there so a winner that never sends one cannot leave the
     // match undecided
     void HoldVerdict(Session s, int reporterCode, int peerCode)
     {
@@ -1508,7 +1517,7 @@ public sealed class BattleHub
         catch (Exception e) { Console.WriteLine($"[{v.Reporter.Id}] finalize failed: {e.Message}"); }
     }
 
-    // the comparison the shadow exists for: relay result (hand-written) vs engine result (read off the board). codes
+    // The comparison the shadow exists for: relay result (hand-written) vs engine result (read off the board). codes
     // are self-relative, so compare against whichever session the engine held as its BattlePlayer
     void EndShadow(Session reporter, int reporterCode)
     {
@@ -1560,7 +1569,7 @@ public sealed class BattleHub
 
     // an observed socket close is the only disconnect signal the relay can trust: a client's own timeout claim
     // (log=300 etc.) is left un-adjudicated in DecideResult so a transient stall can't end a live game, but a dead
-    // transport is ground truth. only the survivor is written; the closing session's writer is already completed
+    // transport is ground truth. only the survivor is written. The closing session's writer is already completed
     public async Task PeerClosed(Session closed)
     {
         Session? survivor;
@@ -1585,12 +1594,10 @@ public sealed class BattleHub
         finally { EndShadow(survivor, 201); }
     }
 
-    const int FallbackCard = 100111010;
-
     object MatchedPayload(Session self, Session oppo, string bid, int turnState) => new
     {
-        // put selfDeck near the top so it's dispatched right after "uri" (which nulls _selfDeck via InitializeSelfInfo).
-        // if Mono's Dictionary iteration in the client had drifted from insertion order, selfDeck showing up late would let uri's null win.
+        // Put selfDeck near the top so it's dispatched right after "uri" (which nulls _selfDeck via InitializeSelfInfo).
+        // if Mono's Dictionary iteration in the client had drifted from insertion order, selfDeck showing up late would let uri's null win
         selfDeck = DeckCards(self),
         selfInfo = UserInfo(self, oppo),
         oppoInfo = UserInfo(oppo, self),
@@ -1603,12 +1610,12 @@ public sealed class BattleHub
     object[] DeckCards(Session s) =>
         ShuffledDeckFor(s).Select((c, i) => (object)new { idx = i + 1, cardId = c }).ToArray();
 
-    // the client never shuffles, it just draws deck slots in order, so the server owns draw order. shuffle once and cache
+    // The client never shuffles, it just draws deck slots in order, so the server owns draw order. shuffle once and cache
     // so Matched, Deal and Swap all agree on the idx->card mapping for the match
     int[] ShuffledDeckFor(Session s)
     {
         if (_shuffled.TryGetValue(s.Id, out var cached)) return cached;
-        var ids = (DeckFor(s)?.CardIds is { Length: > 0 } a ? a : Enumerable.Repeat(FallbackCard, 40).ToArray()).ToArray();
+        var ids = (DeckFor(s)?.CardIds is { Length: > 0 } a ? a : Enumerable.Repeat(Placeholder, 40).ToArray()).ToArray();
         var rng = new Random(DeckSeed(s));
         for (int i = ids.Length - 1; i > 0; i--)
         {
@@ -1619,18 +1626,18 @@ public sealed class BattleHub
         return ids;
     }
 
-    // stable per (room, viewer) so a re-call inside the match reshuffles identically. string.GetHashCode is randomized
+    // stable per (room, viewer) so a re-call inside the match reshuffles identically. String.GetHashCode is randomized
     // per run, so fold the chars by hand for a deterministic seed
     readonly Dictionary<string, int> _deckSeed = new();
     readonly Dictionary<string, int> _stableSeed = new(); // room -> the StableRandom stream both players share
 
-    // the seat, not the header viewer_id. it has to be stable across a mid-battle reconnect so the player keeps the
+    // The seat, not the header viewer_id. it has to be stable across a mid-battle reconnect so the player keeps the
     // deck it was dealt, and distinct between the two players - and viewer_id is not distinct: a copied install sends
     // one cached value for both, so both keys collided, the second roll overwrote the first and the two players were
     // dealt from the SAME shuffle
     string DeckKey(Session s) => s.BattleId + (IsOwner(s) ? " owner" : " guest");
 
-    // Matched rolls this. the fallback only covers a deck asked for before Matched, and folds the chars by hand because
+    // Matched rolls this. The fallback only covers a deck asked for before Matched, and folds the chars by hand because
     // string.GetHashCode is randomized per run and the two players must not disagree about a deck
     int DeckSeed(Session s)
     {
@@ -1665,9 +1672,9 @@ public sealed class BattleHub
         };
     }
 
-    // keys the client reads unguarded off _selfInfo/_oppoInfo. LoadOpponentAssets (gates BattleStartControl.IsReady) reads
+    // Keys the client reads unguarded off _selfInfo/_oppoInfo. LoadOpponentAssets (gates BattleStartControl.IsReady) reads
     // country_code, degreeId, emblemId — a missing key throws KeyNotFoundException and IsReady never latches, which strands
-    // the client in LoadingPhase forever (and past Prepared it no longer times out). values mirror the AI practice battle
+    // the client in LoadingPhase forever (and past Prepared it no longer times out). Values mirror the AI practice battle
     // (AIBattleStartTask), the one flow proven to clear LoadOpponentAssets: country_code "NONE", emblem/degree -1
     // (emblem 0 / degree 0 have no asset and DegreeMgr.Get(0) NREs). classId/charaId/sleeve come from the resolved deck
     object UserInfo(Session s, Session peer)
@@ -1679,7 +1686,7 @@ public sealed class BattleHub
             classId = d?.ClassId ?? 1,
             charaId = d?.CharaId ?? 1,
             viewerId = VidOf(s),
-            // the API resolved this from name.txt / Steam and wrote it alongside the deck; only fall back if it didn't
+            // The API resolved this from name.txt / Steam and wrote it alongside the deck. only fall back if it didn't
             userName = string.IsNullOrEmpty(d?.UserName) ? "player_" + s.ViewerId : d.UserName,
             // the client reads its own selfInfo.fieldId as the stage (NetworkBattleManagerBase.CreateBackgroundId), so both
             // players carry the same per-battle roll to land on the same map
@@ -1700,13 +1707,13 @@ public sealed class BattleHub
         };
     }
 
-    // a deck card the reshuffle moves. only Index is tracked (cardId is read fresh from _ledger at swap time so a card
+    // A deck card the reshuffle moves. only Index is tracked (cardId is read fresh from _ledger at swap time so a card
     // transformed while in the deck stays correct). Index is mutable and followed by reference, since an earlier swap in
     // the same flush can move a still-queued card
     sealed class DeckCard { public int Index; }
 
     // ported verbatim from BattleManagerBase.XorShift so the server produces bit-identical values (same .NET runtime).
-    // only w is seeded; x/y/z keep their constants. do NOT change the arithmetic or GetChangeInt would drift
+    // only w is seeded. X/y/z keep their constants. do NOT change the arithmetic or GetChangeInt would drift
     sealed class XorShift
     {
         int w, x = 123456789, y = 987654321, z = 555555555;
