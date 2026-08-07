@@ -27,10 +27,10 @@ foreach ($f in $carry) {
 # what "the same build" means: a hash over the sources that go into it. the compiler's own output is not usable here
 # because a rebuild of untouched code still has to count as the same version
 $srcHash = (Get-ChildItem -Recurse -File -Path (Join-Path $PSScriptRoot "src"), (Join-Path $PSScriptRoot "tools") `
-              -Include *.cs, *.csproj -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
-            Sort-Object FullName |
-            ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash }) -join ''
+    -Include *.cs, *.csproj -ErrorAction SilentlyContinue |
+  Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
+  Sort-Object FullName |
+  ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash }) -join ''
 $buildId = (Get-FileHash -InputStream ([IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($srcHash))) -Algorithm SHA256).Hash.Substring(0, 16)
 
 # logs accumulate across runs, but only while they still describe this build. a changed build makes them misleading,
@@ -65,6 +65,7 @@ Remove-Item -Recurse -Force $rel -ErrorAction SilentlyContinue
 $projects = @(
   "tools/OpenVerse.Setup/OpenVerse.Setup.csproj",
   "tools/OpenVerse.Launcher/OpenVerse.Launcher.csproj",
+  "tools/OpenVerse.Decker/OpenVerse.Decker.csproj",
   "src/OpenVerse.Api/OpenVerse.Api.csproj",
   "src/OpenVerse.Battle/OpenVerse.Battle.csproj"
 )
@@ -79,7 +80,7 @@ foreach ($p in $projects) {
 
 $keep = @("practice_info.json", "starter_decks.json", "deck_intro.json", "leader_skin_list.json")
 Get-ChildItem (Join-Path $srv "data") -File -ErrorAction SilentlyContinue |
-  Where-Object { $keep -notcontains $_.Name } | Remove-Item -Force
+Where-Object { $keep -notcontains $_.Name } | Remove-Item -Force
 Remove-Item -Recurse -Force (Join-Path $srv "certs") -ErrorAction SilentlyContinue
 Remove-Item -Force (Join-Path $srv "openverse.cer") -ErrorAction SilentlyContinue
 
@@ -104,8 +105,9 @@ $engineTxt = Join-Path $srv "engine.txt"
 $keptEngine = Join-Path $stash "engine.txt"
 $role = if (Test-Path $keptEngine) {
   (Get-Content $keptEngine | ForEach-Object { $_.Trim() } |
-    Where-Object { $_.Length -gt 0 -and -not $_.StartsWith("#") } | Select-Object -First 1)
-} else { $null }
+  Where-Object { $_.Length -gt 0 -and -not $_.StartsWith("#") } | Select-Object -First 1)
+}
+else { $null }
 if (-not $role) { $role = "AdviseCost" }
 Set-Content -Path $engineTxt -Encoding UTF8 -Value @(
   "# Observe | AdviseCost | AnswerBlanks, least to most trusted"
@@ -119,9 +121,9 @@ $zip = Join-Path $PSScriptRoot "OpenVerse.zip"
 Remove-Item -Force $zip -ErrorAction SilentlyContinue
 
 $front = @("openverse-setup.exe", "openverse-launcher.exe")
-$exes = $front + @("OpenVerse.Api.exe", "OpenVerse.Battle.exe")
+$serverExes = @("OpenVerse.Api.exe", "OpenVerse.Battle.exe", "openverse-decker.exe")
 foreach ($e in $front) { if (-not (Test-Path (Join-Path $rel $e))) { throw "missing from publish: $e" } }
-foreach ($e in @("OpenVerse.Api.exe", "OpenVerse.Battle.exe")) {
+foreach ($e in $serverExes) {
   if (-not (Test-Path (Join-Path $srv $e))) { throw "missing from publish: server/$e" }
 }
 $deny = @("Assembly-CSharp.dll", "Assembly-CSharp-firstpass.dll", "OpenVerse.EngineHost.dll", "card_master_full.csv.gz")

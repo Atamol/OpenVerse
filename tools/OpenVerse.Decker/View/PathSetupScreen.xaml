@@ -1,0 +1,125 @@
+<UserControl x:Class="OpenVerse.Decker.View.PathSetupScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="180"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0"
+                   Grid.ColumnSpan="3"
+                   Text="{DynamicResource PathSetupHeader}"
+                   FontSize="18"
+                   FontWeight="Bold"
+                   Margin="0,0,0,16"/>
+
+        <TextBlock Grid.Row="1"
+                   Grid.Column="0"
+                   Text="master_cardnametext.json"
+                   VerticalAlignment="Center"/>
+        <Button Grid.Row="1"
+                Grid.Column="1"
+                Content="{DynamicResource BrowseButton}"
+                Margin="8,4"
+                Padding="8,2"
+                Click="BrowseCardNameText_Click"/>
+        <TextBlock x:Name="CardNameTextPathText"
+                   Grid.Row="1"
+                   Grid.Column="2"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <TextBlock Grid.Row="2"
+                   Grid.Column="0"
+                   Text="master_skilldesctext.json"
+                   VerticalAlignment="Center"/>
+        <Button Grid.Row="2"
+                Grid.Column="1"
+                Content="{DynamicResource BrowseButton}"
+                Margin="8,4"
+                Padding="8,2"
+                Click="BrowseSkillDescText_Click"/>
+        <TextBlock x:Name="SkillDescTextPathText"
+                   Grid.Row="2"
+                   Grid.Column="2"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <TextBlock Grid.Row="3"
+                   Grid.Column="0"
+                   Text="textlangs.json"
+                   VerticalAlignment="Center"/>
+        <Button Grid.Row="3"
+                Grid.Column="1"
+                Content="{DynamicResource BrowseButton}"
+                Margin="8,4"
+                Padding="8,2"
+                Click="BrowseTextlangs_Click"/>
+        <TextBlock x:Name="TextlangsPathText"
+                   Grid.Row="3"
+                   Grid.Column="2"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <TextBlock Grid.Row="4"
+                   Grid.Column="0"
+                   Text="openverse.db"
+                   VerticalAlignment="Center"/>
+        <Button Grid.Row="4"
+                Grid.Column="1"
+                Content="{DynamicResource BrowseButton}"
+                Margin="8,4"
+                Padding="8,2"
+                Click="BrowseOpenVerseDb_Click"/>
+        <TextBlock x:Name="OpenVerseDbPathText"
+                   Grid.Row="4"
+                   Grid.Column="2"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <TextBlock Grid.Row="5"
+                   Grid.Column="0"
+                   Text="card_master_full.csv.gz"
+                   VerticalAlignment="Center"/>
+        <Button Grid.Row="5"
+                Grid.Column="1"
+                Content="{DynamicResource BrowseButton}"
+                Margin="8,4"
+                Padding="8,2"
+                Click="BrowseCardMasterCsv_Click"/>
+        <TextBlock x:Name="CardMasterCsvPathText"
+                   Grid.Row="5"
+                   Grid.Column="2"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"/>
+
+        <TextBlock x:Name="ErrorText"
+                   Grid.Row="6"
+                   Grid.ColumnSpan="3"
+                   Foreground="Red"
+                   Margin="0,12,0,0"
+                   TextWrapping="Wrap"/>
+
+        <Button x:Name="RunButton"
+                Grid.Row="7"
+                Grid.Column="0"
+                Content="{DynamicResource RunButton}"
+                Margin="0,16,0,0"
+                Padding="12,6"
+                HorizontalAlignment="Left"
+                Click="RunButton_Click"/>
+    </Grid>
+</UserControl>

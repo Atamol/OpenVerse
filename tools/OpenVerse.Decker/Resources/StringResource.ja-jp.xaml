@@ -1,0 +1,46 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+     <!-- shared across screens -->
+     <sys:String x:Key="BrowseButton">参照...</sys:String>
+     <sys:String x:Key="RunButton">実行</sys:String>
+     <sys:String x:Key="SaveButton">保存</sys:String>
+     <sys:String x:Key="CancelButton">キャンセル</sys:String>
+     <sys:String x:Key="ConfirmOkButton">OK</sys:String>
+
+     <!-- PathSetupScreen -->
+     <sys:String x:Key="PathSetupHeader">必要なファイルのパスを設定してください</sys:String>
+     <sys:String x:Key="PathSetupMissingFilesError">次のファイルが見つかりません: *</sys:String>
+
+     <!-- InitialScreen -->
+     <sys:String x:Key="InitialHeader">表示言語を選択してください</sys:String>
+     <sys:String x:Key="InitialLoadTextlangsError">textlangs.json の読み込みに失敗しました: *</sys:String>
+     <sys:String x:Key="InitialLoadDeckDataError">デッキデータの読み込みに失敗しました: *</sys:String>
+     <sys:String x:Key="InitialSelectLanguageError">言語を選択してください。</sys:String>
+     <sys:String x:Key="CannotSelectUserKey">ユーザーキーがopenverse.dbに見つかりませんでした。openverse-launcher.exeを先に起動しデッキを作成させてください</sys:String>
+     <sys:String x:Key="SelectUserKeyTitle">どのユーザーがデッキを使用するのか指定してください</sys:String>
+     <sys:String x:Key="CloseDueToUserKey">アプリを閉じる</sys:String>
+     <sys:String x:Key="SelectUserKeyButton">このユーザーが使用する: *</sys:String>
+
+     <!-- DeckListScreen -->
+     <sys:String x:Key="DeckListHeader">デッキ一覧</sys:String>
+     <sys:String x:Key="DeckListAddButton">+ 新しいデッキを作成</sys:String>
+     <sys:String x:Key="DeckListNoUserError">openverse.db にユーザーが見つかりません。クライアントを一度起動して同期させてください</sys:String>
+     <sys:String x:Key="DeckDeleteConfirmMessage">このデッキを削除しますか？この操作は取り消せません</sys:String>
+
+     <!-- DescUserControl -->
+     <sys:String x:Key="DescAdditionalHeader">参照先</sys:String>
+
+     <!-- DeckEditScreen -->
+     <sys:String x:Key="ClearFiltersButton">フィルタをクリア</sys:String>
+
+     <sys:String x:Key="Clan1">エルフ</sys:String>
+     <sys:String x:Key="Clan2">ロイヤル</sys:String>
+     <sys:String x:Key="Clan3">ウィッチ</sys:String>
+     <sys:String x:Key="Clan4">ドラゴン</sys:String>
+     <sys:String x:Key="Clan5">ネクロマンサー</sys:String>
+     <sys:String x:Key="Clan6">ヴァンパイア</sys:String>
+     <sys:String x:Key="Clan7">ビショップ</sys:String>
+     <sys:String x:Key="Clan8">ネメシス</sys:String>
+</ResourceDictionary>

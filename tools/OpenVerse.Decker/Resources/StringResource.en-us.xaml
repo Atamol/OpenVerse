@@ -1,0 +1,50 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+     <sys:String x:Key="AppTitle">OpenVerse.Decker</sys:String>
+
+     <!-- shared across screens -->
+     <sys:String x:Key="BrowseButton">Browse...</sys:String>
+     <sys:String x:Key="RunButton">Run</sys:String>
+     <sys:String x:Key="SaveButton">Save</sys:String>
+     <sys:String x:Key="CancelButton">Cancel</sys:String>
+     <sys:String x:Key="ConfirmOkButton">OK</sys:String>
+
+     <!-- PathSetupScreen -->
+     <sys:String x:Key="PathSetupHeader">Please set the paths for the required files</sys:String>
+     <sys:String x:Key="PathSetupMissingFilesError">The following files were not found: *</sys:String>
+
+     <!-- InitialScreen -->
+     <sys:String x:Key="InitialHeader">Select a display language</sys:String>
+     <sys:String x:Key="InitialLoadTextlangsError">Failed to load textlangs.json: *</sys:String>
+     <sys:String x:Key="InitialLoadDeckDataError">Failed to load deck data: *</sys:String>
+     <sys:String x:Key="InitialSelectLanguageError">Please select a language</sys:String>
+     <sys:String x:Key="CannotSelectUserKey">Cannot find a user key in openverse.db. Please run openverse-launcher first and let it build any deck</sys:String>
+     <sys:String x:Key="SelectUserKeyTitle">Select which user wants to use your deck</sys:String>
+     <sys:String x:Key="CloseDueToUserKey">Close app</sys:String>
+     <sys:String x:Key="SelectUserKeyButton">This user wants the deck: *</sys:String>
+
+     <!-- DeckListScreen -->
+     <sys:String x:Key="DeckListHeader">Deck List</sys:String>
+     <sys:String x:Key="DeckListAddButton">+ Create a new deck</sys:String>
+     <sys:String x:Key="DeckListNoUserError">No user found in openverse.db. Launch the client once and let it sync first</sys:String>
+     <sys:String x:Key="DeckDeleteConfirmMessage">Delete this deck? This action cannot be undone</sys:String>
+
+     <!-- DescUserControl -->
+     <sys:String x:Key="DescAdditionalHeader">References</sys:String>
+     <SolidColorBrush x:Key="KeywordHighlightBrush"
+                      Color="#C2820A"/>
+
+     <!-- DeckEditScreen -->
+     <sys:String x:Key="ClearFiltersButton">Clear filters</sys:String>
+
+     <!-- clan (class_id) names - see InternalDeckBuilder.ValidClanIds -->
+     <sys:String x:Key="Clan1">Forestcraft</sys:String>
+     <sys:String x:Key="Clan2">Swordcraft</sys:String>
+     <sys:String x:Key="Clan3">Runecraft</sys:String>
+     <sys:String x:Key="Clan4">Dragoncraft</sys:String>
+     <sys:String x:Key="Clan5">Shadowcraft</sys:String>
+     <sys:String x:Key="Clan6">Bloodcraft</sys:String>
+     <sys:String x:Key="Clan7">Havencraft</sys:String>
+     <sys:String x:Key="Clan8">Portalcraft</sys:String>
+</ResourceDictionary>

@@ -31,6 +31,26 @@
     <None Include="assets\**\*" Link="assets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- OpenVerse.Decker is a net10.0-windows/WPF project and can't be ProjectReference'd from this
+         net10.0 test project - these three files have no WPF/Windows dependency at all, so compile
+         the same source directly instead of duplicating it -->
+    <Compile Include="..\..\tools\OpenVerse.Decker\Data\TextLoader.cs" Link="Decker\TextLoader.cs" />
+    <Compile Include="..\..\tools\OpenVerse.Decker\Data\CardTextMarkup.cs" Link="Decker\CardTextMarkup.cs" />
+    <Compile Include="..\..\tools\OpenVerse.Decker\Data\CardTextComposer.cs" Link="Decker\CardTextComposer.cs" />
+    <Compile Include="..\..\tools\OpenVerse.Decker\Data\StatsLoader.cs" Link="Decker\StatsLoader.cs" />
+    <Compile Include="..\..\tools\OpenVerse.Decker\Data\CardFilterLoader.cs" Link="Decker\CardFilterLoader.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tools\OpenVerse.Decker\Resources\unlimited_cards.json"
+                       Link="Decker\Resources\unlimited_cards.json"
+                       LogicalName="OpenVerse.Decker.Resources.unlimited_cards.json" />
+    <EmbeddedResource Include="..\..\tools\OpenVerse.Decker\Resources\resurgent_cards.json"
+                       Link="Decker\Resources\resurgent_cards.json"
+                       LogicalName="OpenVerse.Decker.Resources.resurgent_cards.json" />
+  </ItemGroup>
+
   <Import Project="..\..\src\EngineHost.targets" />
 
 </Project>

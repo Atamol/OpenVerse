@@ -14,4 +14,9 @@
     <ProjectReference Include="..\..\src\OpenVerse.Common\OpenVerse.Common.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- reads Unity AssetBundle (.unity3d) files - the client's own downloaded master text data, never bundled here -->
+    <PackageReference Include="AssetsTools.NET" Version="3.0.5" />
+  </ItemGroup>
+
 </Project>

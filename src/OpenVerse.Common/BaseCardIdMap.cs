@@ -8,8 +8,8 @@ namespace OpenVerse.Common;
 // rule works across builds (the real master's foils are id+1, the reconstruction's are id*10), so it must be a table
 public static class BaseCardIdMap
 {
-    const int CardIdCol = 0;
-    const int BaseCardIdCol = 63;
+    private const int CardIdCol = 0;
+    private const int BaseCardIdCol = 63;
 
     // only the real master. The reconstruction fallback invents its own foil convention, and a map that disagreed with
     // the deck ids the API resolved would inject a wrong highlander bit - worse than not injecting. absent -> empty
@@ -30,8 +30,14 @@ public static class BaseCardIdMap
             while (sr.ReadLine() is { } line)
             {
                 var f = SplitCsv(line);
-                if (f.Count <= BaseCardIdCol) continue;
-                if (int.TryParse(f[CardIdCol], out var id) && int.TryParse(f[BaseCardIdCol], out var b)) map[id] = b;
+                if (f.Count <= BaseCardIdCol)
+                {
+                    continue;
+                }
+                if (int.TryParse(f[CardIdCol], out var id) && int.TryParse(f[BaseCardIdCol], out var b))
+                {
+                    map[id] = b;
+                }
             }
         }
         catch (Exception e)
@@ -44,8 +50,8 @@ public static class BaseCardIdMap
     }
 
     // the voice-cue columns are quoted and contain commas, and base_card_id sits after them, so a plain Split(',')
-    // lands on the wrong field (row 930844060 yields "SHURIKEN" instead of the id)
-    internal static List<string> SplitCsv(string line)
+    // lands on the wrong field (row 930844060 yields "SHURIKEN" instead of the id).
+    public static List<string> SplitCsv(string line)
     {
         var fields = new List<string>();
         var cur = new StringBuilder();
@@ -55,13 +61,33 @@ public static class BaseCardIdMap
             var c = line[i];
             if (quoted)
             {
-                if (c != '"') cur.Append(c);
-                else if (i + 1 < line.Length && line[i + 1] == '"') { cur.Append('"'); i++; }
-                else quoted = false;
+                if (c != '"')
+                {
+                    cur.Append(c);
+                }
+                else if (i + 1 < line.Length && line[i + 1] == '"')
+                {
+                    cur.Append('"');
+                    i++;
+                }
+                else
+                {
+                    quoted = false;
+                }
             }
-            else if (c == '"') quoted = true;
-            else if (c == ',') { fields.Add(cur.ToString()); cur.Clear(); }
-            else cur.Append(c);
+            else if (c == '"')
+            {
+                quoted = true;
+            }
+            else if (c == ',')
+            {
+                fields.Add(cur.ToString());
+                cur.Clear();
+            }
+            else
+            {
+                cur.Append(c);
+            }
         }
         fields.Add(cur.ToString());
         return fields;
