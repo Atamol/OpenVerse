@@ -105,7 +105,7 @@ public sealed class ConsistencyWatch
                 _streak.Remove(battleId);
                 return null;
             }
-            // Everything after the first break is downstream of it, so only the first carries the window
+            // everything after the first break is downstream of it, so only the first carries the window
             var first = _reportedFirst.Add(battleId);
             var streak = _streak.GetValueOrDefault(battleId) + 1;
             _streak[battleId] = streak;

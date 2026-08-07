@@ -6,8 +6,8 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
-// a token minted mid-match has no deck slot, so the ledger built from the deck can never name it and its index runs
-// past 40. the actor does say what it is, in orderList's `add` record, but orderList has no readers on the client, so
+// A token minted mid-match has no deck slot, so the ledger built from the deck can never name it and its index runs
+// past 40. The actor does say what it is, in orderList's `add` record, but orderList has no readers on the client, so
 // the identity dies on arrival unless the relay moves it somewhere the client reads
 [Collection("Sqlite")]
 public class TokenRevealTests

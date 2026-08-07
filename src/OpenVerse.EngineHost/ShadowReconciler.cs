@@ -9,10 +9,10 @@ public static class ShadowReconciler
 {
     // A draw names its index only in orderList, which the receive path drops (the engine re-simulates and takes its own
     // deck top). Index is not deck order either (the client reshuffles index assignment off idxChangeSeed on every card
-    // entering the deck), so the two never line up on their own. So every card the actor drew is still in the shadow's
+    // entering the deck), so the two never line up on their own. so every card the actor drew is still in the shadow's
     // deck: the play is accepted and charged but nothing leaves the deck, and the later ATTACK/EVOLUTION find null in
-    // ClassAndInPlayCardList. Each message says where its cards were (move from/to, plus what the action type implies),
-    // so put them there before the engine reads it and its own simulation does the rest.
+    // ClassAndInPlayCardList. each message says where its cards were (move from/to, plus what the action type implies),
+    // so put them there before the engine reads it and its own simulation does the rest
 
     const int Deck = 0, Hand = 10, Field = 20, Cemetery = 30, Banish = 40, Create = 50;
 
@@ -25,7 +25,7 @@ public static class ShadowReconciler
 
     static readonly HashSet<int> SeenSelf = new HashSet<int>(), SeenOppo = new HashSet<int>();
 
-    // the census is per match, and a room plays many. carrying it over makes Place refuse evictions the new match needs,
+    // The census is per match, and a room plays many. carrying it over makes Place refuse evictions the new match needs,
     // so every battle after the first ran against the previous one's indices
     public static void Reset()
     {
@@ -102,7 +102,7 @@ public static class ShadowReconciler
         if (draw.Count == 0) return;
 
         // DrawCards discards straight to the cemetery past nine cards, and the hand is over-full precisely because the
-        // shadow drew cards of its own choosing. give those back first: they stand in for the cards this call is about
+        // shadow drew cards of its own choosing. Give those back first: they stand in for the cards this call is about
         // to put where they belong
         int over = p.HandCardList.Count + draw.Count - HandLimit;
         for (int i = 0; over > 0 && i < p.HandCardList.Count; )

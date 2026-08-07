@@ -3,7 +3,7 @@ using OpenVerse.Battle;
 
 namespace OpenVerse.Tests;
 
-// the client sends targetList but only reads isSelf out of oppoTargetList; the server renamed it per recipient
+// The client sends targetList but only reads isSelf out of oppoTargetList. The server renamed it per recipient
 public class TargetListNormalizeTests
 {
     static JsonObject Norm(string json)

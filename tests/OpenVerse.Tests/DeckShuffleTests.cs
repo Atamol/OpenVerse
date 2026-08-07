@@ -5,7 +5,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
-// The client never shuffles, it draws deck slots in order, so draw order is entirely the relay's to decide. It used to
+// The client never shuffles, it draws deck slots in order, so draw order is entirely the relay's to decide. it used to
 // seed that off (room, viewer) alone, so a rematch in the same room dealt the same cards in the same order.
 // the seed still has to survive a mid-battle reconnect, so it is rolled per battle rather than per session
 [Collection("Sqlite")]

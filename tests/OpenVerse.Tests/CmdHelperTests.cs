@@ -6,7 +6,7 @@ public class CmdHelperTests
 {
     // CmdHelper's registry is static and process-wide (it mirrors how a real tool registers once at startup),
     // so every fact below uses its own enum member and its own command string - none are shared across facts,
-    // even within this file - to avoid tripping RegisterArg's duplicate-flag check against another test.
+    // even within this file - to avoid tripping RegisterArg's duplicate-flag check against another test
     enum Key
     {
         ReadArgRoundTrip, MissingFlagIsNull, TrailingFlagWithNoValueIsNull, LastTokenOverallIsNull,

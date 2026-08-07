@@ -2,7 +2,7 @@ using Microsoft.Win32;
 
 namespace OpenVerse.Common;
 
-// the player name the game shows. the pre-service-end name is NOT recoverable: it lived on Cygames' servers and the
+// The player name the game shows. The pre-service-end name is NOT recoverable: it lived on Cygames' servers and the
 // client only ever read it back from load/index (LoadDetail.cs:146), never persisting it. so: username.txt if the user
 // set one, else their Steam persona name, else null (caller falls back to a generated player_xxxxxx)
 public static class NameResolver
@@ -45,7 +45,7 @@ public static class NameResolver
         return null;
     }
 
-    // loginusers.vdf nests one block per account; the one flagged MostRecent is who Steam will launch the game as.
+    // loginusers.vdf nests one block per account. The one flagged MostRecent is who Steam will launch the game as.
     // fall back to the first persona so a single-account install still resolves
     static string? MostRecentPersona(string[] lines)
     {

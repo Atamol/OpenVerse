@@ -4,7 +4,7 @@ using OpenVerse.Battle;
 
 namespace OpenVerse.Tests;
 
-// a pulled cable leaves the socket half-open, so PeerClosed can be minutes late or never fire. the heartbeat used to
+// A pulled cable leaves the socket half-open, so PeerClosed can be minutes late or never fire. The heartbeat used to
 // answer peerOnline: true unconditionally, which left the survivor waiting on someone who was already gone
 public class PeerSilenceTests
 {

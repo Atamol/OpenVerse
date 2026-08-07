@@ -6,7 +6,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
-// the turn starts when the relay echoes a Judge back to a client. a client only emits Judge when it is NOT its turn, so
+// The turn starts when the relay echoes a Judge back to a client. A client only emits Judge when it is NOT its turn, so
 // normally the echo goes to the sender. an extra turn inverts that: Dimension Shift makes the caster end its turn like
 // any other, so the OPPONENT emits the Judge and the turn has to go back to the caster. echoing to the sender left the
 // caster staring at a greyed-out end-turn button while the opponent's screen showed the caster's turn running

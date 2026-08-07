@@ -58,7 +58,7 @@ public class ProjectionTests
         Assert.False(body.ContainsKey("spin"));
     }
 
-    // an actor that already stated its own spin owns that number; the relay must not second-guess it
+    // an actor that already stated its own spin owns that number. The relay must not second-guess it
     [Fact]
     public void SpinLeavesAStatedValueAlone()
     {

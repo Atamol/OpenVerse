@@ -11,7 +11,7 @@ public partial class BattleServer
     public static void Main(string[] args) => CreateApp(args).Run();
 
     // Boot the engine off the same card master the API serves. Failure is never fatal: the relay is what actually
-    // carries battles today, and a host that has not built the engine assemblies should still run.
+    // carries battles today, and a host that has not built the engine assemblies should still run
     static void StartEngine(string dataDir)
     {
         var gz = Path.Combine(dataDir, "card_master_full.csv.gz");
@@ -38,8 +38,8 @@ public partial class BattleServer
     {
         var builder = WebApplication.CreateBuilder(args);
         var app = builder.Build();
-        // a silent network loss (cable pull) never sends FIN/RST, so ReceiveAsync would block forever and the peer's
-        // disconnect would stay invisible. the client (BestHTTP) answers Ping with Pong off its receive thread, so a
+        // A silent network loss (cable pull) never sends FIN/RST, so ReceiveAsync would block forever and the peer's
+        // disconnect would stay invisible. The client (BestHTTP) answers Ping with Pong off its receive thread, so a
         // ping/pong keepalive surfaces the dead transport well inside the client's 95s BattleStop
         app.UseWebSockets(new WebSocketOptions
         {
@@ -55,8 +55,8 @@ public partial class BattleServer
         var dataDir = Path.Combine(AppContext.BaseDirectory, "data");
         var hub = new BattleHub(sessions, new BattleDeckStore(dbPath), BaseCardIdMap.Load(dataDir), CardCostMap.Load(dataDir));
 
-        // the client's own battle engine, running headless. it is only loaded here - nothing routes through it yet -
-        // so a host without the (non-redistributable) engine assemblies just runs the relay as before
+        // The client's own battle engine, running headless. Loading is separate from trusting it: how far it is
+        // believed comes from engine.txt, and a host without the (non-redistributable) assemblies just relays as before
         StartEngine(dataDir);
 
         app.Map("/{**_}", async (HttpContext ctx) =>
@@ -78,7 +78,7 @@ public partial class BattleServer
                 if (Session.Chatty || pkt.EventName is not "alive")
                     Console.WriteLine($"[{s.Id}] event: {pkt.EventName ?? "(none)"} ackId={pkt.AckId} binaries={bin.Length}");
             };
-            // a handler that throws never relays its message, and the peer sits on the gap in its playSeq stream for the
+            // A handler that throws never relays its message, and the peer sits on the gap in its playSeq stream for the
             // rest of the match, so one bad message desyncs everything after it. nothing observes these tasks, so say it
             session.OnMsg += (s, uri, payload, ackId) => _ = Observe(hub.Dispatch(s, uri, payload, ackId), s, uri);
             session.OnAliveEmit += s => _ = Observe(hub.Alive(s), s, "alive");
@@ -87,7 +87,7 @@ public partial class BattleServer
             try { await session.Run(ctx.RequestAborted); }
             finally
             {
-                // notify before Remove so the peer lookup still resolves the survivor. a throw here must not skip Remove
+                // Notify before Remove so the peer lookup still resolves the survivor. A throw here must not skip Remove
                 try { await hub.PeerClosed(session); }
                 catch (Exception e) { Console.WriteLine($"[{session.Id}] peer-closed notify failed: {e.Message}"); }
                 sessions.Remove(session);

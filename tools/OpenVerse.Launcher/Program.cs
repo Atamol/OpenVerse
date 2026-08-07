@@ -36,7 +36,7 @@ static class Program
             return 0;
         }
 
-        // Root is what a person edits and keeps; Server is what the build produced. running from release/ puts the
+        // Root is what a person edits and keeps, Server is what the build produced. running from release/ puts the
         // first beside the repo rather than inside a directory the next build deletes
         var baseDir = Layout.Root;
         var joinHost = CmdHelper.ReadArg(args, Args.host) ?? ReadHostFile(baseDir);  // client mode: point the game at a host's server
@@ -49,8 +49,8 @@ static class Program
 
         try
         {
-            // one file per run, kept forever: a desync is usually noticed after the fact, and two rotating slots meant
-            // the run that showed it was gone by the time anyone looked. build-release clears the directory when the
+            // One file per run, kept forever: a desync is usually noticed after the fact, and two rotating slots meant
+            // the run that showed it was gone by the time anyone looked. Build-release clears the directory when the
             // build actually changed, so old logs never pile up against a server they no longer describe
             var logDir = Layout.InRoot("openverse_log");
             Directory.CreateDirectory(logDir);
@@ -75,7 +75,7 @@ static class Program
         public override void Flush() { a.Flush(); b.Flush(); }
     }
 
-    // the game's own data folder (where the card-master cache lives). decks go here rather than beside the exe so that
+    // The game's own data folder (where the card-master cache lives). Decks go here rather than beside the exe so that
     // replacing the OpenVerse folder with a new build never touches them - the same reason the cert lives outside it
     static string GameDataDir(string[] args) =>
         CmdHelper.ReadArg(args, Args.client)
@@ -174,7 +174,7 @@ static class Program
             }
             cert = X509CertificateLoader.LoadCertificateFromFile(local);
         }
-        // the host serves our load/index, so it has to be told what to call us - it can't read this machine's
+        // The host serves the load/index, so it has to be told what to call this machine - it can't read this machine's
         // username.txt or Steam install. do it before the hosts redirect, while {host} still resolves normally
         RegisterName(baseDir, host);
         PushDecks(baseDir, host);
@@ -248,7 +248,7 @@ static class Program
         ReadSetting(baseDir, "join_host.txt") ?? ReadSetting(baseDir, "host.txt");
 
     // elevation goes through ShellExecute, which drops the environment, so a setting given as an env var never reaches
-    // the elevated run. one line in a file next to the exe survives and works from a double-click
+    // the elevated run. One line in a file next to the exe survives and works from a double-click
     static string? ReadSetting(string baseDir, string name)
     {
         var f = Path.Combine(baseDir, name);
@@ -330,7 +330,7 @@ static class Program
     {
         // both redirected names still have AAAA records, so an IPv4-only entry is no redirect on a machine with working
         // IPv6: the A lookup is answered here, the AAAA lookup falls through to real DNS and reaches the dead official
-        // server. pin v6 alongside. host mode -> ::1; join mode knows only the host's v4, so point v6 at a black hole
+        // server. Pin v6 alongside. Host mode -> ::1. Join mode knows only the host's v4, so point v6 at a black hole
         // (::) instead so the name still cannot escape
         var v6 = ip == "127.0.0.1" ? "::1" : "::";
         var sb = new StringBuilder(RemoveBlock(content).TrimEnd('\r', '\n'));

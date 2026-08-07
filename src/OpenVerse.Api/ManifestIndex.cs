@@ -112,7 +112,7 @@ public sealed class ManifestIndex
 
     static string Mib(long bytes) => (bytes / 1048576.0).ToString("0.###", CultureInfo.InvariantCulture);
 
-    // name,hash,category,sizeMiB,hash,sizeMiB. columns 1 and 4 are the normal and small-resource variants, and this host
+    // Name,hash,category,sizeMiB,hash,sizeMiB. Columns 1 and 4 are the normal and small-resource variants, and this host
     // only ever has one copy of a bundle
     public byte[] Rewrite(byte[] manifest, out int rewritten, out int deferred)
     {

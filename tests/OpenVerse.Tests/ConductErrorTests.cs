@@ -2,7 +2,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
-// the client tests every received message against its own board and writes ConductError when it refuses one, then ships
+// The client tests every received message against its own board and writes ConductError when it refuses one, then ships
 // that log to add_client_log. it is the only desync verdict that is not ours, so it is the one worth counting
 public class ConductErrorTests
 {

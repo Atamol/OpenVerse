@@ -19,7 +19,7 @@ public static partial class ClientLog
     [GeneratedRegex(@"CardID(?<card>\d+)Idx(?<idx>\d+)")]
     private static partial Regex Card();
 
-    // An IsOperateReceive line names the reason and lands right before the ConductError it caused
+    // an IsOperateReceive line names the reason and lands right before the ConductError it caused
     public static List<ConductError> Read(string log)
     {
         var found = new List<ConductError>();

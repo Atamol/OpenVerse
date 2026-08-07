@@ -21,7 +21,7 @@ public static class Headless
         try { Types = asm.GetTypes(); }
         catch (ReflectionTypeLoadException ex) { Types = ex.Types.Where(t => t != null).ToArray(); }
 
-        // Data.* holds the login response; three passes because later fields reference earlier ones
+        // Data.* holds the login response. three passes because later fields reference earlier ones
         var data = T("Wizard.Data") ?? T("Data");
         for (int i = 0; i < 3; i++) SeedStatics(data);
 

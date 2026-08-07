@@ -4,7 +4,7 @@ using Xunit.Abstractions;
 
 namespace OpenVerse.Tests;
 
-// the capture is a real match relayed by OpenVerse, and it desyncs partway through without anyone noticing at the time.
+// The capture is a real match relayed by OpenVerse, and it desyncs partway through without anyone noticing at the time.
 // the comparator has to find that, so the assertion is not "clean" but "clean until boundary 9"
 public class ConsistencyWatchTests
 {
@@ -52,7 +52,7 @@ public class ConsistencyWatchTests
         Assert.Equal([CodePart.Totals, CodePart.InPlay], div!.Parts);
     }
 
-    // a client repeats Judge; only the one answering the peer's TurnEnd is a boundary
+    // A client repeats Judge. only the one answering the peer's TurnEnd is a boundary
     [Fact]
     public void IgnoresAJudgeFromTheSameSideAsTheTurnEnd()
     {

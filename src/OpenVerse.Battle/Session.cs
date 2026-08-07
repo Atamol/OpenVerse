@@ -20,7 +20,7 @@ public sealed class Session
     public bool Ready { get; set; }
     public bool InitBattleSent { get; set; }
     public bool MatchedSent { get; set; }
-    // a pulled cable does not close a TCP socket, so PeerClosed can be minutes late or never. this is the only evidence
+    // A pulled cable does not close a TCP socket, so PeerClosed can be minutes late or never. this is the only evidence
     // the relay has that a peer is still there
     public DateTimeOffset LastHeard { get; set; } = DateTimeOffset.UtcNow;
     public bool BattleStartSent { get; set; }

@@ -5,9 +5,9 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
-// the client takes its own id from Matched's selfInfo.viewerId, not from its cache, so the relay owns it. anything the
+// The client takes its own id from Matched's selfInfo.viewerId, not from its cache, so the relay owns it. anything the
 // client receives shaped {vid, value} - spin among them - is dropped unless the vid is that client's own, so two seats
-// sharing one id silently discard every such value. a copied install sends the same cached id for both players
+// sharing one id silently discard every such value. A copied install sends the same cached id for both players
 [Collection("Sqlite")]
 public class ViewerIdTests
 {

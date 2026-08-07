@@ -3,8 +3,8 @@ using OpenVerse.Battle;
 
 namespace OpenVerse.Tests;
 
-// a Deck->Field uList entry is a direct summon; without a cardId the peer leaves the slot a placeholder and the summon
-// never happens. Deck->Hand is a draw and must stay hidden.
+// A Deck->Field uList entry is a direct summon. without a cardId the peer leaves the slot a placeholder and the summon
+// never happens. Deck->Hand is a draw and must stay hidden
 public class SummonRevealTests
 {
     static JsonObject Reveal(string json, Dictionary<int, int> ledger)
@@ -62,7 +62,7 @@ public class SummonRevealTests
         Assert.Equal(999, body["uList"]!.AsArray()[0]!["cardId"]!.GetValue<int>());
     }
 
-    // the sender merges records whose fields all match, and its gate compares cardId - which is 0 on all of these - so
+    // The sender merges records whose fields all match, and its gate compares cardId - which is 0 on all of these - so
     // two different cards collapse into one entry. splitting is the inverse of that merge.
     // this is the exact entry captured live where two followers came out of the deck and only one could be named
     [Fact]
@@ -181,7 +181,7 @@ public class SummonRevealTests
         Assert.Null(body["uList"]!.AsArray()[0]!["cardId"]);
     }
 
-    // 葬送: hand -> cemetery. the graveyard is open to both players, so the card has to be named. unnamed, the peer
+    // 葬送: hand -> cemetery. The graveyard is open to both players, so the card has to be named. unnamed, the peer
     // built the entry off its own forty-dummy deck and showed a Goblin
     [Fact]
     public void EntombingFromHandIsRevealed()

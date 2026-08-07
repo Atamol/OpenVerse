@@ -2,7 +2,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
-// name.txt said nothing about what it named, so it became username.txt. anyone who already filled in the old one is
+// Name.txt said nothing about what it named, so it became username.txt. anyone who already filled in the old one is
 // still using it, and a rename that silently stops reading their file is worse than the ambiguity it fixed
 public class SettingFileNameTests
 {

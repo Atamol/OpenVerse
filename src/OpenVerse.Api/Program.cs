@@ -102,7 +102,7 @@ if (Directory.Exists(bundleDir) && manifestBytes.Count > 0)
     Console.WriteLine($"Bundles: {index.Count} files indexed ({index.Hashed} hashed), {rewritten} manifest rows matched, {deferred} not on this machine");
 }
 
-// the client never caches manifest_assetmanifest (it refetches it to check for updates), so it has to be built here.
+// The client never caches manifest_assetmanifest (it refetches it to check for updates), so it has to be built here.
 // sizes in this one are bytes, not the MiB the sub-manifests use
 byte[] SynthesizeManifestOfManifests()
 {
@@ -345,8 +345,8 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         catch (Exception e) { Console.WriteLine($"  decode failed: {e.Message}"); }
     }
 
-    // a joining client's launcher posts its own name here (plain HTTP, same as the cert fetch) since we can't read that
-    // machine's name.txt or Steam install. keyed by source IP: the game then connects from the same box
+    // A joining client's launcher posts its own name here (plain HTTP, same as the cert fetch), since this side cannot
+    // read that machine's name.txt or Steam install. keyed by source IP: the game then connects from the same box
     if (path.Equals("/openverse/name", StringComparison.OrdinalIgnoreCase))
     {
         var ip = context.Connection.RemoteIpAddress?.ToString();
@@ -360,7 +360,7 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         return;
     }
 
-    // a client's decks live on its own machine, not on whoever it happened to join. push before the game starts (the
+    // A client's decks live on its own machine, not on whoever it happened to join. push before the game starts (the
     // udid is not known yet, so hold it by IP), pull after it exits
     if (path.Equals("/openverse/decks", StringComparison.OrdinalIgnoreCase))
     {

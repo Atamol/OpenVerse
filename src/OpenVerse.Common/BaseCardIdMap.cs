@@ -5,13 +5,13 @@ namespace OpenVerse.Common;
 
 // cardId -> base_card_id. alt-art ids (prefix 701-722) are granted unconditionally and map back to their base, so two
 // art variants of one card are the SAME card for a highlander check even though their cardIds differ. no arithmetic
-// rule works across builds (the real master's foils are id+1, the reconstruction's are id*10), so it must be a table.
+// rule works across builds (the real master's foils are id+1, the reconstruction's are id*10), so it must be a table
 public static class BaseCardIdMap
 {
     const int CardIdCol = 0;
     const int BaseCardIdCol = 63;
 
-    // only the real master. the reconstruction fallback invents its own foil convention, and a map that disagreed with
+    // only the real master. The reconstruction fallback invents its own foil convention, and a map that disagreed with
     // the deck ids the API resolved would inject a wrong highlander bit - worse than not injecting. absent -> empty
     public static Dictionary<int, int> Load(string dataDir)
     {

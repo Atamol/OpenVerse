@@ -111,7 +111,7 @@ public class SeatPinTests
         Assert.False(r.IsOwner(c));
     }
 
-    // two clients have been seen sending the same cached viewer id. the pin then matches everyone, so both players get
+    // two clients have been seen sending the same cached viewer id. The pin then matches everyone, so both players get
     // the owner's class, deck and name - worse than the race it was meant to fix
     [Fact]
     public void IgnoresThePinWhenBothSocketsClaimTheSameViewer()

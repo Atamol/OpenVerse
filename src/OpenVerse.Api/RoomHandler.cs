@@ -49,7 +49,7 @@ public sealed class RoomHandler
             "force_release_room" => ForceRelease(ownerUdid),
             "initialize_room_battle" => InitializeBattle(root),
             "do_matching" => DoMatching(ownerUdid),
-            // set_deck carries the participant's chosen deck_no; stash it so do_matching can resolve the real deck
+            // set_deck carries the participant's chosen deck_no. stash it so do_matching can resolve the real deck
             "set_deck" => SetDeck(ownerUdid, root),
             "deck_entry" or "ban_deck" or "finish_load"
                 => JsonSerializer.Serialize(new { result_reason = 0 }),
@@ -113,7 +113,7 @@ public sealed class RoomHandler
             IsOwner = isOwner,
             ClassId = classId,
             SubClassId = deck.SubClassId,
-            // default leader chara_id equals class_id for the 8 base classes; GetClassPrm throws on 0/-1
+            // default leader chara_id equals class_id for the 8 base classes, and GetClassPrm throws on 0/-1
             CharaId = classId,
             SleeveId = deck.SleeveId,
             LeaderSkinId = deck.LeaderSkinId,
@@ -123,7 +123,7 @@ public sealed class RoomHandler
         });
     }
 
-    // a card's class is its 100,000s digit (verified vs card master clan column). deck class = most common nonzero digit
+    // A card's class is its 100,000s digit (verified vs card master clan column). Deck class = most common nonzero digit
     static int ClassOf(int[] cardIds)
     {
         var digits = cardIds.Select(c => c / 100000 % 10).Where(d => d is >= 1 and <= 8).ToList();

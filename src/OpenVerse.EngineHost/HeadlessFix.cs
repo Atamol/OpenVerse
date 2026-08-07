@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 
-// the last few ability failures were all presentation reaching for scene objects, never rule logic, so plant the two
+// The last few ability failures were all presentation reaching for scene objects, never rule logic, so plant the two
 // the skills dereference. NOT via BattleManagerBase.IsForecast: that flag also makes StableRandom return 0, which
 // would silently kill every random effect in the game
 public static class HeadlessFix
@@ -38,7 +38,7 @@ public static class HeadlessFix
             slcF.SetValue(mgr, slc);
         }
 
-        // Skill_evolve/Skill_metamorphose call BattleLogManager.GetInstance() to append a log line. a blank instance
+        // Skill_evolve/Skill_metamorphose call BattleLogManager.GetInstance() to append a log line. A blank instance
         // satisfies the call, and its own null guards keep it from touching any UI
         var blm = Headless.T("Wizard.Battle.UI.BattleLogManager") ?? Headless.T("BattleLogManager");
         var inst = blm?.GetField("_instance", Any);
@@ -51,7 +51,7 @@ public static class HeadlessFix
                 log = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(blm);
                 inst.SetValue(null, log);
             }
-            // only the fusion path gets filled in. a blanket seed here is actively harmful: most of this object's null
+            // only the fusion path gets filled in. A blanket seed here is actively harmful: most of this object's null
             // fields are the guards that keep the log off UI, and filling them sends PlayCard's logging into the scene
             SeedLogWindow(log);
         }

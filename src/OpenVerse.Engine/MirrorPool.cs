@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace OpenVerse.Engine;
 
-// a pair can hold one battle at a time, so two rooms playing at once need two pairs. booting one costs an engine's
+// A pair can hold one battle at a time, so two rooms playing at once need two pairs. booting one costs an engine's
 // startup and about 190MB, so they are pooled and reused rather than built per battle, and the cap is what stops a
 // busy evening from eating the machine
 public sealed class MirrorPool : IDisposable

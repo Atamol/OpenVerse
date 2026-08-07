@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Wizard.RoomMatch;
 
-// builds the client's own PlayActions dictionary. keys are the NetworkParameter enum names verbatim:
+// builds the client's own PlayActions dictionary. Keys are the NetworkParameter enum names verbatim:
 // ConvertReceiveDataToMakeData filters on Enum.IsDefined(typeof(NetworkParameter), key) and NetworkParameterNames is
 // nothing but enum -> Enum.GetName, so there is no separate short wire alphabet
 public static class Wire
@@ -60,7 +60,7 @@ public static class Wire
         };
         // knownList is what NetworkBattleData.GetPlayCard resolves against, so the stock OperateReceiveChecker needs
         // it. not free: BeforeSettingReceiveData runs every entry through ReplaceReceivedCard against BattleEnemy,
-        // which swaps the live instance for a freshly built one. off by default
+        // which swaps the live instance for a freshly built one. Off by default
         if (withKnownList)
             d["knownList"] = new List<object> { new Dictionary<string, object> { { "idx", playIdx }, { "cardId", cardId } } };
         if (targets != null && targets.Count > 0)
@@ -78,7 +78,7 @@ public static class Wire
     };
 
     // NetworkWatchBattleReceiver.ParseSelectSkillData reads "value" positionally: [0] operation, [1]
-    // isEvolveTargetSelect, [2] isBurialRite, [3] payload. the payload for Start* is a bare index; for Select/Complete
+    // isEvolveTargetSelect, [2] isBurialRite, [3] payload. The payload for Start* is a bare index. For Select/Complete
     // it is one flag char plus a zero-padded 3-digit index (EmitHandUtility.ConvertToThreeDigitCardIndex)
     public static Dictionary<string, object> SelectSkill(
         NetworkBattleSender.SELECT_SKILL_OPERATION op, bool isEvolveSelect, bool isBurialRite,
