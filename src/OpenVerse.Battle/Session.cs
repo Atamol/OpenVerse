@@ -12,18 +12,29 @@ public sealed class Session
     public string Id { get; } = Guid.NewGuid().ToString("N")[..12];
     public string BattleId { get; }
     public string ViewerId { get; }
+    public string RemoteIp { get; init; } = "";
     public int PingIntervalMs { get; init; } = 2000;
     public int PingTimeoutMs { get; init; } = 5000;
     public bool Loaded { get; set; }
     public bool MulliganDone { get; set; }
     public bool Ready { get; set; }
     public bool InitBattleSent { get; set; }
+    public bool MatchedSent { get; set; }
+    // A pulled cable does not close a TCP socket, so PeerClosed can be minutes late or never. this is the only evidence
+    // the relay has that a peer is still there
+    public DateTimeOffset LastHeard { get; set; } = DateTimeOffset.UtcNow;
     public bool BattleStartSent { get; set; }
     public bool DealSent { get; set; }
     // deck cards are Indexed 1..40 (client uses slot+1), so the opening hand is 1-3 and redraws pull slot 4 and up
     public int NextDeckIdx { get; set; } = 4;
     // mulligan redraws: hand position -> replacement deck slot
     public Dictionary<int, int> Redraws { get; } = new();
+
+    public static readonly bool Chatty =
+        Environment.GetEnvironmentVariable("OPENVERSE_LOG_FRAMES")?.Trim().ToLowerInvariant() is "1" or "true" or "on";
+
+    static bool Keepalive(string text) =>
+        text.StartsWith('2') || text.StartsWith('3') || text.Contains("\"alive\"", StringComparison.Ordinal);
 
     readonly WebSocket _ws;
     readonly Channel<Frame> _outgoing = Channel.CreateUnbounded<Frame>();
@@ -74,7 +85,7 @@ public sealed class Session
             if (r.MessageType == WebSocketMessageType.Text)
             {
                 var text = Encoding.UTF8.GetString(frame);
-                Console.WriteLine($"[{Id}] << {text}");
+                if (Chatty || !Keepalive(text)) Console.WriteLine($"[{Id}] << {text}");
                 var ep = EnginePacket.ParseText(text);
                 switch (ep.Type)
                 {
@@ -96,7 +107,7 @@ public sealed class Session
             }
             else
             {
-                Console.WriteLine($"[{Id}] << <binary {frame.Length}B>");
+                if (Chatty) Console.WriteLine($"[{Id}] << <binary {frame.Length}B>");
                 pending.Add(frame);
                 if (pendingPacket is not null && pending.Count == expected)
                 {
@@ -110,19 +121,18 @@ public sealed class Session
 
     void Dispatch(SocketPacket sp, byte[][] binaries)
     {
+        // every inbound frame, not just the ones the hub routes: the Gungnir heartbeat leaves here through OnAliveEmit
+        // and never reaches the hub's dispatch, so counting only those had a live peer look silent within 20s
+        LastHeard = DateTimeOffset.UtcNow;
         OnEvent?.Invoke(this, sp, binaries);
         if (sp.EventName == "alive")
         {
-            // client keeps a Gungnir heartbeat: ACK the emit, then let BattleHub push back an alive response
             if (sp.AckId is int aliveAckId) _ = SendAck(aliveAckId, 0);
             OnAliveEmit?.Invoke(this);
             return;
         }
         if (sp.EventName == "hand")
         {
-            // SELECT_SKILL/SLIDE_OBJECT stock into the SAME emit queue as PlayActions/TurnEnd and only advance on a
-            // matching-pubSeq ack; without it the first drag-attack/targeted-play/evolve blocks the queue forever.
-            // fire-and-forget hands (Touch/SelectObject/TurnEndReady) carry no AckId and need nothing.
             if (sp.AckId is int handAckId && binaries.Length > 0)
             {
                 try { _ = SendAck(handAckId, BattleCodec.DecodeHandPubSeq(binaries[0])); }
@@ -155,20 +165,18 @@ public sealed class Session
 
     Task SendText(string s, CancellationToken ct)
     {
-        Console.WriteLine($"[{Id}] >> {s}");
+        if (Chatty || !Keepalive(s)) Console.WriteLine($"[{Id}] >> {s}");
         return _outgoing.Writer.WriteAsync(new Frame(WebSocketMessageType.Text, Encoding.UTF8.GetBytes(s)), ct).AsTask();
     }
 
     Task SendBinary(byte[] data, CancellationToken ct)
     {
-        Console.WriteLine($"[{Id}] >> <binary {data.Length}B>");
+        if (Chatty) Console.WriteLine($"[{Id}] >> <binary {data.Length}B>");
         return _outgoing.Writer.WriteAsync(new Frame(WebSocketMessageType.Binary, data), ct).AsTask();
     }
 
     public async Task SendMsg(string uri, object payload, bool withPlaySeq = true, CancellationToken ct = default)
     {
-        // "uri" must come before selfDeck: on Matched, the client's uri handler calls InitializeSelfInfo() which nulls _selfDeck.
-        // if "uri" is parsed after "selfDeck", StartBattleLoad hits null.Select and dies before stopping matchedStart.
         var envelope = new JsonObject { ["uri"] = uri };
         var body = JsonNode.Parse(JsonSerializer.Serialize(payload)) as JsonObject;
         if (body is not null) foreach (var (k, v) in body) if (k != "uri") envelope[k] = v?.DeepClone();
@@ -199,9 +207,6 @@ public sealed class Session
         return SendText("4" + packet.Serialize(), ct);
     }
 
-    // Gungnir alive: server pushes an "alive" event back so the client's OnAlived -> ReceiveGungnir marks self/opponent online.
-    // scs = self connection status, ocs = opponent connection status (ONLINE/WAITING/OFFLINE/TIMEOUT).
-    // ocs=OFFLINE is what fires the peer's OppoDisconnectVictory, so only send it on an observed socket close.
     public async Task SendAlive(bool peerOnline, bool peerGone = false, CancellationToken ct = default)
     {
         var envelope = new JsonObject

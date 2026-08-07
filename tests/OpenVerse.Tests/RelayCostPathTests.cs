@@ -14,13 +14,10 @@ public class RelayCostPathTests
 
     const int DimShift = 101334020;   // base 18, spellboostStep 1
     const int Everyday = 102311050;   // base 3, spellboostStep 1
+    const int Rirara = 125211020;     // base 2, Royal, spellboostStep 0
     const int Filler = 100111010;
 
-    static string DataDir()
-    {
-        var d = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data");
-        return Path.GetFullPath(d);
-    }
+    static string DataDir() => Fixtures.DataDir() ?? Path.Combine(Path.GetTempPath(), "openverse-no-master");
 
     const BindingFlags MF = BindingFlags.NonPublic | BindingFlags.Instance;
 
@@ -129,6 +126,24 @@ public class RelayCostPathTests
         Assert.Equal(0, pin);
     }
 
+    // Battle 78719 in openverse_20260804-183834.log: Rirara was drawn with a -1 discount and later caught a charge from
+    // an unrelated effect. The relay dropped the discount, stated base 2, and the peer refused the play at
+    // "IsPlayCard PPover Pp1useCost2cardId125211020idx36" - the play simply never happened on the other screen.
+    // A charge lands on every card in the target set, so having one says nothing about whether a card discounts on it
+    [Fact]
+    public void ACostModSurvivesACharge_OnACardWithNoSpellboostDiscount()
+    {
+        if (!File.Exists(Path.Combine(DataDir(), "card_master_full.csv.gz"))) return;
+        var r = NewRig();
+        r.SeedDeck(r.A, (36, Rirara));
+        r.Charge(r.A, ChargeIdxList(new[] { 36 }, isSelf: 1, spellboost: null, cost: "a-1"));
+        r.Charge(r.A, ChargeIdxList(new[] { 36 }, isSelf: 1));
+
+        var (ok, cost) = r.FinalCost(r.A, 36, Rirara);
+        Assert.True(ok, "TryFinalCost declined a card that carries a real discount and no spellboost rule");
+        Assert.Equal(1, cost);
+    }
+
     // a price the relay proved itself is never handed to the engine: the engine is there for the silence, not to
     // second-guess arithmetic that already works
     [Fact]
@@ -142,8 +157,8 @@ public class RelayCostPathTests
         Assert.False(r.AsksTheEngine(r.A, 5, Everyday, relayCost: 2));
     }
 
-    // the peer subtracts the master base cost from the actor's Pp whenever no cost is stated, so silence on a
-    // discounted card drains it until plays start being refused. the engine is asked for every silence, not just the
+    // The peer subtracts the master base cost from the actor's Pp whenever no cost is stated, so silence on a
+    // discounted card drains it until plays start being refused. The engine is asked for every silence, not just the
     // group-idx one, and declines here only because no engine is running in this fixture
     [Fact]
     public void AsksTheEngineWheneverItHasNoPriceOfItsOwn()

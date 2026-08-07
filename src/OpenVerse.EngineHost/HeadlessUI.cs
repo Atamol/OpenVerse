@@ -54,7 +54,7 @@ public class HeadlessOpeningPhase : OpeningPhase
 }
 
 // UIButton.isEnabled toggles a UnityEngine.Collider, and Collider.set_enabled is an InternalCall in the real
-// PhysicsModule. the JIT refuses to compile any method resolving such a call, so the whole property throws
+// PhysicsModule. The JIT refuses to compile any method resolving such a call, so the whole property throws
 // SecurityException before a single branch runs (a Collider or not makes no difference), and overriding it is the only
 // way past. nothing headless reads the value back
 public class HeadlessMenuButton : Wizard.WizardUIButton
@@ -100,7 +100,7 @@ public class HeadlessPhaseCreator : SingleBattlePhaseCreator
 public class HeadlessContentsCreator : StandardBattleMgrContentsCreator
 {
     // StandardBattleMgrContentsCreator seeds itself with new Random().Next(), which BattleManagerBase hands to
-    // _stableRandom. a server must be able to replay a battle and a harness to report a number twice, so pin the seed
+    // _stableRandom. A server must be able to replay a battle and a harness to report a number twice, so pin the seed
     public HeadlessContentsCreator(int seed) : base(new Wizard.Battle.Recovery.NullRecoveryRecordManager(), new Wizard.Battle.Replay.NullReplayRecordManager())
     {
         typeof(StandardBattleMgrContentsCreator).GetProperty("RecoveryManager").SetValue(this, new HeadlessRecoveryManager());

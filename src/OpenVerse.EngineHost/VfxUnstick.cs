@@ -8,7 +8,7 @@ using Wizard.Battle.View.Vfx;
 // ResourcesManager.StartCoroutine_LoadAssetGroupAsync and WaitCallbackVfx sits until that load calls back. with no
 // bundles on disk the callback never arrives, so the vfx queue wedges and everything behind it (the end-of-game
 // sequence included) never runs. releasing exactly those two leaf types is the headless reading of "the effect is
-// already loaded"; nothing else is touched, so no rules-carrying vfx gets skipped
+// already loaded". nothing else is touched, so no rules-carrying vfx gets skipped
 public static class VfxUnstick
 {
     const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;

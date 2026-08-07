@@ -10,9 +10,9 @@ using Wizard;
 // own evaluation and returns IsReceivedSkillConditionCheck (false when nothing was injected), so the skill silently
 // does not fire on the peer.
 //
-// the fix asks the shadow engine the same question the acting engine asked itself. the spec's filter language is never
+// the fix asks the shadow engine the same question the acting engine asked itself. The spec's filter language is never
 // parsed: it only names a skill (idx + skillIdx + skillCount), and that skill's own condition is evaluated, the same
-// call a CPU battle makes. public surface is flat (Dictionary/List/string/int/bool) since the net10 caller reaches
+// call a CPU battle makes. Public surface is flat (Dictionary/List/string/int/bool) since the net10 caller reaches
 // this net48 assembly by reflection with no shared types
 public static class Answer
 {
@@ -20,12 +20,12 @@ public static class Answer
 
     public static string LastError { get; private set; }
 
-    // per-spec trace of the last call, for diagnostics only; never used to decide anything
+    // per-spec trace of the last call, for diagnostics only. never used to decide anything
     public static List<string> LastTrace { get; private set; } = new List<string>();
 
-    // specs: the actor's orderList[].skillConditionCheck objects, each flattened to Dictionary<string,object>. one row
-    // per answerable spec in spec order; a spec the engine cannot evaluate produces no row, so a decline is per spec
-    // rather than per message. row keys are receive-side wire keys, ready to append to the message's knownList.
+    // specs: the actor's orderList[].skillConditionCheck objects, each flattened to Dictionary<string,object>. One row
+    // per answerable spec in spec order. A spec the engine cannot evaluate produces no row, so a decline is per spec
+    // rather than per message. Row keys are receive-side wire keys, ready to append to the message's knownList.
     // not reentrant: the evaluation lifts the played card out of its hand for the duration (see HideFromHand), so it
     // must run on the one shadow worker thread and never concurrently with an ingest
     public static List<object> AnswerConditions(NetworkBattleManagerBase mgr, bool isSelfPlayer, int cardIdx, List<object> specs)
@@ -34,7 +34,7 @@ public static class Answer
         var rows = new List<object>();
         if (specs == null || specs.Count == 0 || mgr == null) return rows;
 
-        // Two specs for one skill are its two option slots (a powerup that buffs attack AND life registers twice);
+        // two specs for one skill are its two option slots (a powerup that buffs attack AND life registers twice);
         // the receiving node tells them apart by their order, so the n-th spec for a skill answers its n-th slot
         var nth = new Dictionary<SkillBase, int>();
 
@@ -53,8 +53,8 @@ public static class Answer
     static Dictionary<string, object> One(NetworkBattleManagerBase mgr, bool isSelfPlayer, int cardIdx,
                                           Dictionary<string, object> spec, Dictionary<SkillBase, int> nth)
     {
-        // Only these three keys are read. type / target / condition / isPreprocess are the actor's own restatement of
-        // a filter this side already owns; trusting them would mean reimplementing the filter language
+        // only these three keys are read. Type / target / condition / isPreprocess are the actor's own restatement of
+        // a filter this side already owns. trusting them would mean reimplementing the filter language
         int idx = Int(spec, "idx", cardIdx);
         int skillIdx = Int(spec, "skillIdx", -1);
         int skillCount = Int(spec, "skillCount", -1);
@@ -100,7 +100,7 @@ public static class Answer
                 { Note(idx, skillIdx, skillCount, kind + " -> value not readable, declined"); return null; }
                 string key = kind == RegisterSkillConditionCheck.SkillConditionType.count ? "count"
                            : kind == RegisterSkillConditionCheck.SkillConditionType.param ? "param" : "callCount";
-                // count / param / callCount each set activate = 1 on the receiving side by themselves; sending both
+                // Count / param / callCount each set activate = 1 on the receiving side by themselves. sending both
                 // would be a second entry for the same skill and the second is unreachable
                 Note(idx, skillIdx, skillCount, kind + " slot" + slot + " -> " + key + "=" + v + " [" + skill.GetType().Name + "]");
                 return Row(idx, skillIdx, skillCount, key, v);
@@ -177,9 +177,9 @@ public static class Answer
     }
 
 
-    // ExecutionInfoCreatorBase.CheckCondition is what a CPU battle runs. On this side every skill carries a
+    // ExecutionInfoCreatorBase.CheckCondition is what a CPU battle runs. on this side every skill carries a
     // NetworkExecutionInfoCreator, whose CheckCondition would answer with the injected value instead of its own
-    // reading; CheckScanCondition is that class's own call straight through to the base
+    // reading, so use CheckScanCondition, which is that class's own call straight through to the base
     static bool Evaluate(NetworkBattleManagerBase mgr, BattleCardBase card, SkillBase skill)
     {
         var pair = mgr.GetBattlePlayerInfoPair(card.IsPlayer);
@@ -243,8 +243,8 @@ public static class Answer
     }
 
     // The shadow is asked before it has ingested the play, so the card being played is still in its owner's hand,
-    // while the acting engine evaluated with the card already out of it. Taking it out for the length of the
-    // evaluation is what makes the two boards the same board. hand_other_self excludes it anyway; a bare me.hand does
+    // while the acting engine evaluated with the card already out of it. taking it out for the length of the
+    // evaluation is what makes the two boards the same board. hand_other_self excludes it anyway. A bare me.hand does
     // not, and that is the case this exists for
     // hand_other_oldest reads hand order, so the card goes back where it was, not on the end
     static int HideFromHand(BattleCardBase card, out BattlePlayerBase owner)

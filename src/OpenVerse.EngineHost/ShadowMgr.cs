@@ -45,7 +45,7 @@ public class ShadowOperateReceive : OperateReceive
     protected override InPlayCardReflection CreateNetworkInPlayAction() => new ShadowInPlayCardReflection(_battleMgr, _operateMgr);
 }
 
-// WatchOperationCollection is the only collection that honours _isPlayer on both sides; NetworkOperationCollection
+// WatchOperationCollection is the only collection that honours _isPlayer on both sides, and NetworkOperationCollection
 // hardcodes BattleEnemy. its watch-only ctor leaves _watchBattleMgr null, so every member that reaches through it
 // (all presentation) is stubbed here
 public class ShadowOperationCollection : WatchOperationCollection
@@ -105,7 +105,7 @@ public class ShadowOperationCollection : WatchOperationCollection
 }
 
 // every checker this drives is a socket-liveness watchdog (disconnect, missing turn start) on a coroutine, and
-// BattleCoroutine needs a scene prefab. none of it is rules
+// BattleCoroutine needs a scene prefab. None of it is rules
 public class NullReceiveIntervalTrigger : ReceiveIntervalTrigger
 {
     public override void ReceiveDataCheck(NetworkBattleManagerBase m, NetworkBattleData d, bool isPlayer, bool isExTurn) { }
@@ -121,8 +121,8 @@ public class ShadowMgr : NetworkBattleManagerBase
         // never sees it and the token creation lands on a card prefab. this is the client's own view-less card builder,
         // the one recovery installs, a different seam from IsRecovery that sets no other flag
         SetupCreateBattleCardFunc(true);
-        // the base NetworkBattleReceiver never parses the SelectSkill payload: _selectSkillOperation, _isPlayerCard and
-        // _isEvolveTargetSelect are only ever assigned in NetworkWatchBattleReceiver. a node that ingests both sides
+        // The base NetworkBattleReceiver never parses the SelectSkill payload: _selectSkillOperation, _isPlayerCard and
+        // _isEvolveTargetSelect are only ever assigned in NetworkWatchBattleReceiver. A node that ingests both sides
         // needs the watch receiver, and its ctor takes the plain manager
         typeof(NetworkBattleManagerBase)
             .GetField("networkReceiver", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
@@ -131,8 +131,8 @@ public class ShadowMgr : NetworkBattleManagerBase
 
     public override bool IsVirtualBattle => true;
 
-    // the stock body clones a scene prefab, so every choice / accelerate / crystallize play throws headless and the
-    // token is never minted. the throw is swallowed by the vfx player, so it costs a spellboost charge and a later
+    // The stock body clones a scene prefab, so every choice / accelerate / crystallize play throws headless and the
+    // token is never minted. The throw is swallowed by the vfx player, so it costs a spellboost charge and a later
     // attack on the missing card rather than showing up as an error. this is the client's own view-less construction
     protected override BattleCardBase CreateTransformCardWithGameObject(int cardId, BattleCardBase originalCard, bool isPlayer, bool isChoice)
     {
@@ -163,7 +163,7 @@ public class ShadowMgr : NetworkBattleManagerBase
         return new ShadowOperationCollection(this, OperateMgr, d, networkBattleData, isPlayer);
     }
 
-    // base reaches SBattleLoad.m_TurnEndBtnUI; everything above that line is BattleManagerBase.StartOpening, replayed
+    // base reaches SBattleLoad.m_TurnEndBtnUI. everything above that line is BattleManagerBase.StartOpening, replayed
     // here because a grandparent call is not expressible
     public override void StartOpening(int firstAttack)
     {
@@ -172,8 +172,8 @@ public class ShadowMgr : NetworkBattleManagerBase
         VfxMgr.RegisterSequentialVfx(BattlePlayer.StartSkillWhenBattleStart(new SkillProcessor()));
     }
 
-    // the networked override is the finish handshake: it hangs AckEmitBattleFinish off RealTimeNetworkAgent.OnAck
-    // (null here) and emits TurnEndFinal. the judgement it gates on is kept, the handshake is not
+    // The networked override is the finish handshake: it hangs AckEmitBattleFinish off RealTimeNetworkAgent.OnAck
+    // (null here) and emits TurnEndFinal. The judgement it gates on is kept, the handshake is not
     public NetworkBattleReceiver.RESULT_CODE TerminalCode = NetworkBattleReceiver.RESULT_CODE.NotFinish;
 
     public override VfxBase JudgeBattleResult()

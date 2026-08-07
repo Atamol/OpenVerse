@@ -3,7 +3,7 @@ using OpenVerse.Battle;
 
 namespace OpenVerse.Tests;
 
-// the sender nests selectCard, the receiver wants it flat. these lock in the shape the peer's ConvertToListInt accepts
+// The sender nests selectCard, the receiver wants it flat. these lock in the shape the peer's ConvertToListInt accepts
 public class KeyActionNormalizeTests
 {
     static JsonObject Norm(string json)

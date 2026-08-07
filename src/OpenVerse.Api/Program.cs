@@ -102,7 +102,7 @@ if (Directory.Exists(bundleDir) && manifestBytes.Count > 0)
     Console.WriteLine($"Bundles: {index.Count} files indexed ({index.Hashed} hashed), {rewritten} manifest rows matched, {deferred} not on this machine");
 }
 
-// the client never caches manifest_assetmanifest (it refetches it to check for updates), so it has to be built here.
+// The client never caches manifest_assetmanifest (it refetches it to check for updates), so it has to be built here.
 // sizes in this one are bytes, not the MiB the sub-manifests use
 byte[] SynthesizeManifestOfManifests()
 {
@@ -175,19 +175,16 @@ var practiceRoster = File.Exists(practicePath) ? File.ReadAllText(practicePath).
 var practiceHandler = new PracticeHandler(practiceRoster, deckHandler);
 Console.WriteLine($"Practice: {(practiceRoster == "[]" ? "no roster" : $"loaded {System.Text.Json.JsonDocument.Parse(practiceRoster).RootElement.GetArrayLength()} opponents")}");
 
+var conductErrors = 0;
 var deckCodeStore = new DeckCodeStore(Path.Combine(AppContext.BaseDirectory, "deckcodes.db"));
 var purgedCodes = deckCodeStore.PurgeOlderThan(TimeSpan.FromDays(30));
 if (purgedCodes > 0) Console.WriteLine($"DeckCodes: purged {purgedCodes} codes older than 30 days");
 var deckCodeHandler = new DeckCodeHandler(deckCodeStore);
 
 var users = new UserStore();
-// the host's own game reaches us over loopback (its hosts file points at 127.0.0.1), so this names the host. a joining
-// client can't be read from here - its launcher POSTs its name to /openverse/name and we key that by source IP
 var hostName = NameResolver.Resolve(AppContext.BaseDirectory);
 Console.WriteLine($"Name: host = {hostName ?? "(unresolved, using generated)"}");
 var ipNames = new ConcurrentDictionary<string, string>();
-// a joining client keeps its decks on its own machine: its launcher pushes them here before the game starts and pulls
-// them back after. both are keyed by source IP because only the game knows its udid, and it hasn't spoken yet at push time
 var ipUdids = new ConcurrentDictionary<string, string>();
 var pendingDecks = new ConcurrentDictionary<string, string>();
 var rooms = new RoomStore
@@ -214,7 +211,6 @@ Dictionary<int, string[]> LoadTextIds(string p)
     }
     return d;
 }
-// voice_cues.tsv: "<id>\t<cue1>,<cue2>,..."
 Dictionary<int, string> LoadVoiceCues(string p)
 {
     var d = new Dictionary<int, string>();
@@ -285,7 +281,6 @@ var sleeveManifest = Path.Combine(manifestDir, "sleeve_assetmanifest");
 var sleeveListJson = SleeveListBuilder.BuildJson(sleeveManifest);
 Console.WriteLine($"SleeveList: granted {sleeveListJson.Split("\"sleeve_id\"").Length - 1} sleeves");
 
-// re-key the pushed decks onto this host's udid for the player: deck_no/order carry over, the udid does not
 void ImportDecks(string udid, string json)
 {
     try
@@ -327,7 +322,6 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
             ? hostName
             : ipNames.GetValueOrDefault(ip?.ToString() ?? "");
         if (resolved is not null) users.GetOrCreate(udid).Name = resolved;
-        // now that this box's udid is known, adopt whatever its launcher pushed and let it pull back later
         if (ip is not null)
         {
             ipUdids[ip.ToString()] = udid;
@@ -337,12 +331,22 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
     string? reqJson = null;
     if (udid is not null && body.Length > 32)
     {
-        try { reqJson = WireCodec.DecodeRequest(body, udid); Console.WriteLine($"  req: {reqJson}"); }
+        try
+        {
+            reqJson = WireCodec.DecodeRequest(body, udid);
+            Console.WriteLine($"  req: {reqJson}");
+            // the client's own desync verdict rides in here, one long string among the rest of its log
+            foreach (var ce in ClientLog.Read(reqJson))
+            {
+                conductErrors++;
+                Console.WriteLine($"  {ce}  [{conductErrors} this session]");
+            }
+        }
         catch (Exception e) { Console.WriteLine($"  decode failed: {e.Message}"); }
     }
 
-    // a joining client's launcher posts its own name here (plain HTTP, same as the cert fetch) since we can't read that
-    // machine's name.txt or Steam install. keyed by source IP: the game then connects from the same box
+    // A joining client's launcher posts its own name here (plain HTTP, same as the cert fetch), since this side cannot
+    // read that machine's name.txt or Steam install. keyed by source IP: the game then connects from the same box
     if (path.Equals("/openverse/name", StringComparison.OrdinalIgnoreCase))
     {
         var ip = context.Connection.RemoteIpAddress?.ToString();
@@ -356,7 +360,7 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         return;
     }
 
-    // a client's decks live on its own machine, not on whoever it happened to join. push before the game starts (the
+    // A client's decks live on its own machine, not on whoever it happened to join. push before the game starts (the
     // udid is not known yet, so hold it by IP), pull after it exits
     if (path.Equals("/openverse/decks", StringComparison.OrdinalIgnoreCase))
     {
@@ -437,7 +441,6 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
     else
         await context.Response.WriteAsync("{}");
 
-    // the stub ships a placeholder, not a name: whoever runs the host would otherwise be the name every client sees
     string WithName(string stub, string userKey)
     {
         var name = users.GetOrCreate(userKey).Name;
@@ -458,7 +461,7 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         string data;
         string handler;
         if (DeckHandler.CanHandle(p) && json is not null) { handler = "deck"; data = deckHandler.Handle(p, json, userKey); }
-        else if (RoomHandler.CanHandle(p) && json is not null) { handler = "room"; data = roomHandler.Handle(p, json, userKey); }
+        else if (RoomHandler.CanHandle(p) && json is not null) { handler = "room"; data = roomHandler.Handle(p, json, userKey, context.Connection.RemoteIpAddress?.ToString() ?? ""); }
         else if (p.Contains("immutable_data/card_master")) { handler = "card_master"; data = $"{{\"card_master\":\"{cardMasterPayload}\"}}"; }
         else if (p.Contains("load/index"))
         {

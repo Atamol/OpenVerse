@@ -1,10 +1,9 @@
-using System.IO.Compression;
 using System.Text.Json.Nodes;
 using OpenVerse.Engine;
 
 namespace OpenVerse.Tests;
 
-// the point of these is the net10 -> net48 hop: the server cannot reference the engine host, so everything goes
+// The point of these is the net10 -> net48 hop: the server cannot reference the engine host, so everything goes
 // through reflection and a compile proves nothing about it. they skip rather than fail when the engine is absent,
 // since it is built per host and stays out of the repo.
 // each test ends its match before returning: the shadow is a process-global singleton (one match at a time), so a
@@ -12,17 +11,7 @@ namespace OpenVerse.Tests;
 [Collection("Engine")]
 public class ShadowBridgeTests
 {
-    static string? Csv()
-    {
-        var gz = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data", "card_master_full.csv.gz");
-        if (!File.Exists(gz)) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "OpenVerse.EngineHost.dll"))) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assembly-CSharp.dll"))) return null;
-        using var fs = File.OpenRead(gz);
-        using var z = new GZipStream(fs, CompressionMode.Decompress);
-        using var sr = new StreamReader(z);
-        return sr.ReadToEnd();
-    }
+    static string? Csv() => Fixtures.CardMasterCsv();
 
     static int[] Deck() =>
         Enumerable.Range(0, 40).Select(i => new[] { 100011010, 900011080, 100011020, 100011030 }[i % 4]).ToArray();
@@ -42,7 +31,7 @@ public class ShadowBridgeTests
         Assert.True(ShadowBridge.WaitIdle());
     }
 
-    // the shadow sits beside live matches, so a message it cannot make sense of has to cost an observation and nothing
+    // The shadow sits beside live matches, so a message it cannot make sense of has to cost an observation and nothing
     // else. garbage is the case that matters: the engine's receive path is known to throw out of ReceivedMessage on
     // short lists and unguarded First() calls
     [Fact]
@@ -75,7 +64,7 @@ public class ShadowBridgeTests
         Assert.Contains("life=", state);
     }
 
-    // a board the engine can describe is a board it can adjudicate; an empty or garbled line means the hop half-worked
+    // A board the engine can describe is a board it can adjudicate. an empty or garbled line means the hop half-worked
     [Fact]
     public void ReportsABoardItCanRead()
     {

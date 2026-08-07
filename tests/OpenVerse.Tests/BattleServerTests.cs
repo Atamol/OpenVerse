@@ -178,7 +178,7 @@ public class BattleServerTests : IClassFixture<WebApplicationFactory<BattleServe
         Assert.Equal("Leave", nodeA?["uri"]?.GetValue<string>());
     }
 
-    // a client repeats JudgeResult until a BattleFinish answers it. a code the relay does not map used to be dropped
+    // A client repeats JudgeResult until a BattleFinish answers it. A code the relay does not map used to be dropped
     // silently, so a battle both clients had already given up on hung with each of them asking forever
     [Fact]
     public async Task AnswersAResultCodeItDoesNotRecognise()

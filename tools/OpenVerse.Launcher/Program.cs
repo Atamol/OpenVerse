@@ -24,7 +24,7 @@ static class Program
             "print this usage text", "help", "-h")
         { TakeValue = false });
         CmdHelper.RegisterArg(Args.host, new CommandExplanation(
-            "this decides whether running client or host. by default run in client mode and connects to the host ip or name. if you leave this empty then try read host.txt in the same dir. if host.txt is also empty then run in host mode.", "host"));
+            "this decides whether running client or host. by default run in client mode and connects to the host ip or name. leave it out and join_host.txt beside the exe is read instead; empty there too means host mode", "host"));
         CmdHelper.RegisterArg(Args.client, new CommandExplanation(
             "the Shadowverse client's data folder (card_master cache, decks); default: %UserProfile%\\AppData\\LocalLow\\Cygames\\Shadowverse", "client"));
         CmdHelper.RegisterArg(Args.advertise, new CommandExplanation(
@@ -36,7 +36,9 @@ static class Program
             return 0;
         }
 
-        var baseDir = AppContext.BaseDirectory;
+        // Root is what a person edits and keeps, Server is what the build produced. running from release/ puts the
+        // first beside the repo rather than inside a directory the next build deletes
+        var baseDir = Layout.Root;
         var joinHost = CmdHelper.ReadArg(args, Args.host) ?? ReadHostFile(baseDir);  // client mode: point the game at a host's server
 
         if (!IsAdmin())
@@ -45,15 +47,16 @@ static class Program
             return RelaunchAsAdmin(args) ? 0 : 1;
         }
 
-        // tee stdout to launcher.log so debugging never depends on shell redirection
         try
         {
-            var logPath = Path.Combine(baseDir, "openverse.log");
-            // a desync is usually noticed after the fact, and starting over used to erase the run that showed it. keep
-            // the previous one, the same way the game keeps Player-prev.log
-            try { if (File.Exists(logPath)) File.Move(logPath, Path.Combine(baseDir, "openverse-prev.log"), overwrite: true); }
-            catch (IOException) { }
+            // One file per run, kept forever: a desync is usually noticed after the fact, and two rotating slots meant
+            // the run that showed it was gone by the time anyone looked. Build-release clears the directory when the
+            // build actually changed, so old logs never pile up against a server they no longer describe
+            var logDir = Layout.InRoot("openverse_log");
+            Directory.CreateDirectory(logDir);
+            var logPath = Path.Combine(logDir, $"openverse_{DateTime.Now:yyyyMMdd-HHmmss}.log");
             var logStream = new FileStream(logPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+            Console.WriteLine($"log: {logPath}");
             var tee = new TeeWriter(Console.Out, new StreamWriter(logStream, new UTF8Encoding(false)) { AutoFlush = true });
             Console.SetOut(tee);
             Console.SetError(tee);
@@ -63,7 +66,6 @@ static class Program
         return joinHost is not null ? RunJoin(baseDir, joinHost) : RunHost(baseDir, args);
     }
 
-    // fan out writes to both console and log file so the server + battle stdout end up in the log along with our own prints
     sealed class TeeWriter(TextWriter a, TextWriter b) : TextWriter
     {
         public override Encoding Encoding => a.Encoding;
@@ -73,7 +75,7 @@ static class Program
         public override void Flush() { a.Flush(); b.Flush(); }
     }
 
-    // the game's own data folder (where the card-master cache lives). decks go here rather than beside the exe so that
+    // The game's own data folder (where the card-master cache lives). Decks go here rather than beside the exe so that
     // replacing the OpenVerse folder with a new build never touches them - the same reason the cert lives outside it
     static string GameDataDir(string[] args) =>
         CmdHelper.ReadArg(args, Args.client)
@@ -81,8 +83,6 @@ static class Program
         ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                         "AppData", "LocalLow", "Cygames", "Shadowverse");
 
-    // db in the game folder. on the first run after the move, carry over a db still beside the exe so decks are not
-    // orphaned. returns the path both servers use
     static string ResolveDeckDb(string baseDir, string[] args)
     {
         var explicitPath = Environment.GetEnvironmentVariable("OPENVERSE_DECK_DB");
@@ -102,7 +102,6 @@ static class Program
         }
         catch (Exception e)
         {
-            // the game folder is unwritable or absent: fall back to beside the exe so decks still save somewhere
             Console.WriteLine($"deck db: using the OpenVerse folder ({e.Message})");
             return legacy;
         }
@@ -117,7 +116,7 @@ static class Program
 
         var deckDb = ResolveDeckDb(baseDir, args);
 
-        var cardMaster = Path.Combine(baseDir, "data", "card_master_full.csv.gz");
+        var cardMaster = Layout.InServer("data", "card_master_full.csv.gz");
         if (!File.Exists(cardMaster))
         {
             Console.Error.WriteLine($"card_master not found: {cardMaster}");
@@ -156,7 +155,6 @@ static class Program
         return 0;
     }
 
-    // client side: trust the host's cert, redirect hosts to the host, launch the game, undo on exit. no server, no card_master
     static int RunJoin(string baseDir, string host)
     {
         X509Certificate2 cert;
@@ -176,10 +174,9 @@ static class Program
             }
             cert = X509CertificateLoader.LoadCertificateFromFile(local);
         }
-        // the host serves our load/index, so it has to be told what to call us - it can't read this machine's
-        // name.txt or Steam install. do it before the hosts redirect, while {host} still resolves normally
+        // The host serves the load/index, so it has to be told what to call this machine - it can't read this machine's
+        // username.txt or Steam install. do it before the hosts redirect, while {host} still resolves normally
         RegisterName(baseDir, host);
-        // our decks live here, not on whoever we joined: hand them over before the game starts
         PushDecks(baseDir, host);
         var hostsEdited = false;
         try
@@ -191,7 +188,6 @@ static class Program
             Process.Start(new ProcessStartInfo($"steam://rungameid/{SteamAppId}") { UseShellExecute = true });
             Console.WriteLine("close the game to stop.");
             WaitForGameExit();
-            // pull back whatever we built this session, so the decks follow us to the next host
             PullDecks(baseDir, host);
         }
         finally
@@ -234,11 +230,10 @@ static class Program
         catch (Exception e) { Console.WriteLine($"could not save decks ({e.Message}); they stay on the host."); }
     }
 
-    // name.txt if the player set one, else their Steam persona. a failure here only costs a nicer name, never the launch
     static void RegisterName(string baseDir, string host)
     {
         var name = NameResolver.Resolve(baseDir);
-        if (name is null) { Console.WriteLine("no name.txt and no Steam persona found; the host will generate one."); return; }
+        if (name is null) { Console.WriteLine("no username.txt and no Steam persona found; the host will generate one."); return; }
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
@@ -248,10 +243,12 @@ static class Program
         catch (Exception e) { Console.WriteLine($"could not register name with {host} ({e.Message}); the host will generate one."); }
     }
 
-    static string? ReadHostFile(string baseDir) => ReadSetting(baseDir, "host.txt");
+    // host.txt is what this was called before, and someone who already put an address in one should keep joining
+    static string? ReadHostFile(string baseDir) =>
+        ReadSetting(baseDir, "join_host.txt") ?? ReadSetting(baseDir, "host.txt");
 
     // elevation goes through ShellExecute, which drops the environment, so a setting given as an env var never reaches
-    // the elevated run. one line in a file next to the exe survives and works from a double-click
+    // the elevated run. One line in a file next to the exe survives and works from a double-click
     static string? ReadSetting(string baseDir, string name)
     {
         var f = Path.Combine(baseDir, name);
@@ -333,7 +330,7 @@ static class Program
     {
         // both redirected names still have AAAA records, so an IPv4-only entry is no redirect on a machine with working
         // IPv6: the A lookup is answered here, the AAAA lookup falls through to real DNS and reaches the dead official
-        // server. pin v6 alongside. host mode -> ::1; join mode knows only the host's v4, so point v6 at a black hole
+        // server. Pin v6 alongside. Host mode -> ::1. Join mode knows only the host's v4, so point v6 at a black hole
         // (::) instead so the name still cannot escape
         var v6 = ip == "127.0.0.1" ? "::1" : "::";
         var sb = new StringBuilder(RemoveBlock(content).TrimEnd('\r', '\n'));
@@ -362,7 +359,6 @@ static class Program
         return string.Join('\n', kept);
     }
 
-    // pick the IP friends connect to: prefer a Radmin VPN adapter, else the first non-loopback IPv4
     static string? DetectLanIp()
     {
         try
@@ -383,7 +379,7 @@ static class Program
     static Process StartServer(string baseDir, string? advertise, string certPath, string deckDb)
     {
         var overridePath = Environment.GetEnvironmentVariable("OPENVERSE_SERVER");
-        var exe = Path.Combine(baseDir, "OpenVerse.Api.exe");
+        var exe = Layout.InServer("OpenVerse.Api.exe");
         ProcessStartInfo psi;
         if (overridePath is { } o)  // dev: a .dll runs via dotnet, an .exe directly
             psi = o.EndsWith(".dll") ? new ProcessStartInfo("dotnet", $"\"{o}\"") : new ProcessStartInfo(o);
@@ -397,20 +393,21 @@ static class Program
         psi.Environment["OPENVERSE_DECK_DB"] = deckDb;
         if (advertise is not null) psi.Environment["OPENVERSE_NODE_URL"] = $"{advertise}:3001";  // battle server address friends connect to
         psi.UseShellExecute = false;
-        psi.WorkingDirectory = baseDir;
+        psi.WorkingDirectory = Layout.Server;
         return StartWithTee(psi);
     }
 
     static Process StartBattle(string baseDir, string deckDb)
     {
-        var exe = Path.Combine(baseDir, "OpenVerse.Battle.exe");
+        var exe = Layout.InServer("OpenVerse.Battle.exe");
         if (!File.Exists(exe))
             throw new FileNotFoundException(
                 $"OpenVerse.Battle.exe not found next to the launcher ({baseDir}). Run from the full release folder.");
-        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = baseDir };
+        var psi = new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Layout.Server };
         psi.Environment["ASPNETCORE_URLS"] = "http://0.0.0.0:3001";
         psi.Environment["OPENVERSE_DECK_DB"] = deckDb;
-        if (ReadSetting(baseDir, "engine.txt") is { } role)
+        // ships with the build rather than being edited per machine, so it sits with the servers, not with join_host.txt
+        if (ReadSetting(Layout.Server, "engine.txt") is { } role)
         {
             psi.Environment["OPENVERSE_ENGINE_ROLE"] = role;
             Console.WriteLine($"engine role: {role} (from engine.txt)");
@@ -418,7 +415,6 @@ static class Program
         return StartWithTee(psi);
     }
 
-    // capture the child's stdout/stderr and forward through Console.Out so the tee catches them (console + launcher.log)
     static Process StartWithTee(ProcessStartInfo psi)
     {
         psi.RedirectStandardOutput = true;

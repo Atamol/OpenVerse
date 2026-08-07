@@ -1,3 +1,11 @@
+.vs/
+.vscode/
+.idea/
+*.user
+
+Thumbs.db
+.DS_Store
+
 bin/
 obj/
 release/
@@ -17,13 +25,12 @@ src/OpenVerse.Api/data/*
 analysis/
 tests/Shadowverse/
 
-.vs/
-.vscode/
-.idea/
-*.user
-
-Thumbs.db
-.DS_Store
-
 src/OpenVerse.Engine/lib/
 graphify-out/
+
+openverse.cer
+openverse-setup.exe
+openverse-launcher.exe
+join_host.txt
+username.txt
+openverse_log/

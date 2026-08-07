@@ -5,7 +5,7 @@ namespace OpenVerse.Common;
 /// <summary>
 /// command info for --foo-foo bar
 /// </summary>
-/// <param name="description">Explanation of the command. Shown in <c>GenerateMan()</c></param>
+/// <param name="description">Explanation of the command. shown in <c>GenerateMan()</c></param>
 /// <param name="commands">actual command(s), without the leading "--". <br/>pass more than one to register aliases
 /// for the same arg (ex: "foo-foo", "f"). <br/>each must be globally unique across every registered arg</param>
 public sealed class CommandExplanation(string description, params string[] commands)
@@ -15,7 +15,7 @@ public sealed class CommandExplanation(string description, params string[] comma
         : throw new ArgumentException("CommandExplanation needs at least one command", nameof(commands));
     public string Description { get; } = description;
 
-    // false for boolean switches like --help, which take no following value. set via the object initializer:
+    // False for boolean switches like --help, which take no following value. Set via the object initializer:
     // new CommandExplanation("...", "help") { TakesValue = false }
     public bool TakeValue { get; init; } = true;
 }

@@ -3,11 +3,6 @@ using Microsoft.Data.Sqlite;
 
 namespace OpenVerse.Common;
 
-// resolved deck for a battle participant, written by the API at do_matching and read by the Battle process at Matched.
-// the two run as separate processes sharing openverse.db. keyed by (room_id, is_owner) — the room_id is what the client
-// sends as the battle-socket "BattleId" header, and owner/visitor is stable on both sides (API knows room.OwnerUdid,
-// Battle knows the first session in the battle group). viewer_id is unusable: a cached client viewer_id can diverge
-// from the API's per-udid assignment
 public sealed class BattleDeck
 {
     public string RoomId { get; set; } = "";
@@ -18,9 +13,8 @@ public sealed class BattleDeck
     public long SleeveId { get; set; } = 3000011L;
     public int LeaderSkinId { get; set; }
     public int[] CardIds { get; set; } = [];
-    // the API owns the name (only it sees the udid and the per-machine registration), so it rides along here rather
-    // than the Battle process inventing a second one
     public string UserName { get; set; } = "";
+    public string SourceIp { get; set; } = "";
 }
 
 public sealed class BattleDeckStore
@@ -45,6 +39,7 @@ public sealed class BattleDeckStore
                 leader_skin_id INTEGER NOT NULL DEFAULT 0,
                 card_ids TEXT NOT NULL DEFAULT '[]',
                 user_name TEXT NOT NULL DEFAULT '',
+                source_ip TEXT NOT NULL DEFAULT '',
                 PRIMARY KEY (room_id, is_owner)
             )
             """;
@@ -64,8 +59,8 @@ public sealed class BattleDeckStore
         using var cmd = c.CreateCommand();
         cmd.CommandText = """
             INSERT OR REPLACE INTO battle_deck
-            (room_id, is_owner, class_id, sub_class_id, chara_id, sleeve_id, leader_skin_id, card_ids, user_name)
-            VALUES ($r, $o, $c, $s, $ch, $sl, $lk, $cards, $name)
+            (room_id, is_owner, class_id, sub_class_id, chara_id, sleeve_id, leader_skin_id, card_ids, user_name, source_ip)
+            VALUES ($r, $o, $c, $s, $ch, $sl, $lk, $cards, $name, $ip)
             """;
         cmd.Parameters.AddWithValue("$r", d.RoomId);
         cmd.Parameters.AddWithValue("$o", d.IsOwner ? 1 : 0);
@@ -76,6 +71,7 @@ public sealed class BattleDeckStore
         cmd.Parameters.AddWithValue("$lk", d.LeaderSkinId);
         cmd.Parameters.AddWithValue("$cards", JsonSerializer.Serialize(d.CardIds));
         cmd.Parameters.AddWithValue("$name", d.UserName);
+        cmd.Parameters.AddWithValue("$ip", d.SourceIp);
         cmd.ExecuteNonQuery();
     }
 
@@ -99,6 +95,7 @@ public sealed class BattleDeckStore
             LeaderSkinId = r.GetInt32(r.GetOrdinal("leader_skin_id")),
             CardIds = JsonSerializer.Deserialize<int[]>(r.GetString(r.GetOrdinal("card_ids"))) ?? [],
             UserName = r.GetString(r.GetOrdinal("user_name")),
+            SourceIp = r.GetString(r.GetOrdinal("source_ip")),
         };
     }
 }

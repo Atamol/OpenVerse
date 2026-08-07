@@ -36,7 +36,7 @@ public class NameResolverTests
         Assert.Null(NameResolver.FromFile(Path.Combine(Path.GetTempPath(), "ov-no-such-dir")));
     }
 
-    // only meaningful where Steam is installed; the resolver must never throw regardless
+    // only meaningful where Steam is installed. The resolver must never throw regardless
     [Fact]
     public void SteamPersonaDoesNotThrow()
     {

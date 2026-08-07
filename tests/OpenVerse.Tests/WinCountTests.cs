@@ -3,7 +3,7 @@ using OpenVerse.Battle;
 namespace OpenVerse.Tests;
 
 // RESULT_CODE is self-relative: it names the RECIPIENT's own outcome, so a *Win code means the holder won. The
-// earlier reading here was the opposite, which credited every decided match to the loser.
+// earlier reading here was the opposite, which credited every decided match to the loser
 public class WinCountTests
 {
     [Theory]

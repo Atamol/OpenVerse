@@ -14,7 +14,7 @@ public static class BattleCodec
     }
 
     // "hand" emits are plaintext MessagePack(JSON array), no AES. pubSeq sits at array index 3
-    // ([uri, viewerId, udid, pubSeq, ...params]); echoing it back is what unblocks the client emit queue.
+    // ([uri, viewerId, udid, pubSeq, ...params]); echoing it back is what unblocks the client emit queue
     public static int DecodeHandPubSeq(byte[] chunk)
     {
         var data = chunk.Length > 0 && chunk[0] == 0x04 ? chunk[1..] : chunk;

@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 using OpenVerse.Common;
 
-// content hash of the final (post-shutdown) card_master. a client whose cache hashes differently synced
+// Content hash of the final (post-shutdown) card_master. A client whose cache hashes differently synced
 // earlier, so some cards render pre-patch data
 const string LatestHash = "0b82bbcc494650f0079f5142636b6d3fc8770e8cae5a52f08d2aaeea057d912f";
 
@@ -27,7 +27,7 @@ if (CmdHelper.HasFlag(args, Args.help))
 var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 var clientData = CmdHelper.ReadArg(args, Args.client)
     ?? Path.Combine(userProfile, "AppData", "LocalLow", "Cygames", "Shadowverse");
-var outDir = CmdHelper.ReadArg(args, Args.@out) ?? Path.Combine(AppContext.BaseDirectory, "data");
+var outDir = CmdHelper.ReadArg(args, Args.@out) ?? Layout.InServer("data");
 
 try { Console.OutputEncoding = Encoding.UTF8; } catch { }
 Console.WriteLine($"client: {clientData}");

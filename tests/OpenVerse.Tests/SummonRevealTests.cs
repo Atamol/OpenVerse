@@ -3,8 +3,8 @@ using OpenVerse.Battle;
 
 namespace OpenVerse.Tests;
 
-// a Deck->Field uList entry is a direct summon; without a cardId the peer leaves the slot a placeholder and the summon
-// never happens. Deck->Hand is a draw and must stay hidden.
+// A Deck->Field uList entry is a direct summon. without a cardId the peer leaves the slot a placeholder and the summon
+// never happens. Deck->Hand is a draw and must stay hidden
 public class SummonRevealTests
 {
     static JsonObject Reveal(string json, Dictionary<int, int> ledger)
@@ -62,7 +62,7 @@ public class SummonRevealTests
         Assert.Equal(999, body["uList"]!.AsArray()[0]!["cardId"]!.GetValue<int>());
     }
 
-    // the sender merges records whose fields all match, and its gate compares cardId - which is 0 on all of these - so
+    // The sender merges records whose fields all match, and its gate compares cardId - which is 0 on all of these - so
     // two different cards collapse into one entry. splitting is the inverse of that merge.
     // this is the exact entry captured live where two followers came out of the deck and only one could be named
     [Fact]
@@ -179,5 +179,94 @@ public class SummonRevealTests
     {
         var body = Reveal("""{"uList":[{"idxList":[2],"to":20,"isSelf":1}]}""", Ledger);
         Assert.Null(body["uList"]!.AsArray()[0]!["cardId"]);
+    }
+
+    // 葬送: hand -> cemetery. The graveyard is open to both players, so the card has to be named. unnamed, the peer
+    // built the entry off its own forty-dummy deck and showed a Goblin
+    [Fact]
+    public void EntombingFromHandIsRevealed()
+    {
+        var body = Reveal("""{"uList":[{"idxList":[2],"from":10,"to":30,"isSelf":1}]}""", Ledger);
+        Assert.Equal(113131030, body["uList"]!.AsArray()[0]!["cardId"]!.GetValue<int>());
+    }
+
+    // and the knock-on: a cemetery that was filled unnamed cannot be reanimated by name later either
+    [Fact]
+    public void ReanimatingOutOfTheCemeteryIsRevealed()
+    {
+        var body = Reveal("""{"uList":[{"idxList":[2],"from":30,"to":20,"isSelf":1}]}""", Ledger);
+        Assert.Equal(113131030, body["uList"]!.AsArray()[0]!["cardId"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void BanishingFromHandIsRevealed()
+    {
+        var body = Reveal("""{"uList":[{"idxList":[2],"from":10,"to":40,"isSelf":1}]}""", Ledger);
+        Assert.Equal(113131030, body["uList"]!.AsArray()[0]!["cardId"]!.GetValue<int>());
+    }
+
+    // the play route still belongs to InjectKnownCard: naming it here too would put the same card in two channels
+    [Fact]
+    public void AHandPlayOntoTheFieldIsStillLeftAlone()
+    {
+        var body = Reveal("""{"uList":[{"idxList":[2],"from":10,"to":20,"isSelf":1}]}""", Ledger);
+        Assert.Null(body["uList"]!.AsArray()[0]!["cardId"]);
+    }
+
+    // a destination nobody can look at stays hidden whatever the source
+    [Theory]
+    [InlineData(0)]   // Deck
+    [InlineData(50)]  // None
+    [InlineData(80)]  // Reservation
+    public void APrivateDestinationIsStillDeclined(int to)
+    {
+        var body = Reveal($$"""{"uList":[{"idxList":[2],"from":10,"to":{{to}},"isSelf":1}]}""", Ledger);
+        Assert.Null(body["uList"]!.AsArray()[0]!["cardId"]);
+    }
+
+    // a card mounted on or merged into a board unit is standing in plain sight, so it is named like any other arrival
+    [Theory]
+    [InlineData(70)]  // Riding
+    [InlineData(90)]  // Unite
+    public void ArrivingOnABoardUnitIsRevealed(int to)
+    {
+        var body = Reveal($$"""{"uList":[{"idxList":[2],"from":10,"to":{{to}},"isSelf":1}]}""", Ledger);
+        Assert.Equal(113131030, body["uList"]!.AsArray()[0]!["cardId"]!.GetValue<int>());
+    }
+
+    static List<string> Declines(string json, Dictionary<int, int> ledger)
+    {
+        var said = new List<string>();
+        BattleHub.InjectSummonedCardIds(JsonNode.Parse(json)!.AsObject(),
+            ix => ledger.TryGetValue(ix, out var c) ? c : 0,
+            (from, to, idx, why) => said.Add($"{from}->{to} idx={idx}: {why}"));
+        return said;
+    }
+
+    // the point of the whole exercise: a zone this does not handle yet has to announce itself, not wait for a player to
+    // notice a Goblin. 60 is FusionIngredient, which is deliberately still undecided
+    [Fact]
+    public void AnUnhandledDestinationSaysSo()
+    {
+        Assert.Single(Declines("""{"uList":[{"idxList":[2],"from":20,"to":60,"isSelf":1}]}""", Ledger));
+    }
+
+    // an arrival the peer can see but the relay could not name is the case that actually shows a Goblin
+    [Fact]
+    public void AnUnnamedPublicArrivalSaysSo()
+    {
+        var said = Declines("""{"uList":[{"idxList":[77],"from":30,"to":20,"isSelf":1}]}""", Ledger);
+        Assert.Single(said);
+        Assert.Contains("77", said[0]);
+    }
+
+    // the routes that work must stay quiet, or the log stops meaning anything
+    [Theory]
+    [InlineData(10, 20)]   // the hand play InjectKnownCard owns
+    [InlineData(0, 10)]    // a draw
+    [InlineData(0, 20)]    // a direct summon, which is named
+    public void TheRoutesThatWorkStayQuiet(int from, int to)
+    {
+        Assert.Empty(Declines($$"""{"uList":[{"idxList":[2],"from":{{from}},"to":{{to}},"isSelf":1}]}""", Ledger));
     }
 }

@@ -3,8 +3,8 @@ using OpenVerse.Battle;
 
 namespace OpenVerse.Tests;
 
-// playerParam entries taken from real captured traffic. These are the values that make vengeance/overflow decidable,
-// and the relay had been dropping them.
+// playerParam entries taken from real captured traffic. these are the values that make vengeance/overflow decidable,
+// and the relay had been dropping them
 public class VitalsTests
 {
     static BattleHub.Vitals Apply(params string[] entries)

@@ -5,16 +5,14 @@ using System.Linq;
 using Wizard;
 using Wizard.BattleMgr;
 
-// Message normalization the shadow host applies before ReceivedMessage, outside the engine assembly (same seam as the
-// knownList strip).
 public static class ShadowReconciler
 {
     // A draw names its index only in orderList, which the receive path drops (the engine re-simulates and takes its own
     // deck top). Index is not deck order either (the client reshuffles index assignment off idxChangeSeed on every card
-    // entering the deck), so the two never line up on their own. So every card the actor drew is still in the shadow's
+    // entering the deck), so the two never line up on their own. so every card the actor drew is still in the shadow's
     // deck: the play is accepted and charged but nothing leaves the deck, and the later ATTACK/EVOLUTION find null in
-    // ClassAndInPlayCardList. Each message says where its cards were (move from/to, plus what the action type implies),
-    // so put them there before the engine reads it and its own simulation does the rest.
+    // ClassAndInPlayCardList. each message says where its cards were (move from/to, plus what the action type implies),
+    // so put them there before the engine reads it and its own simulation does the rest
 
     const int Deck = 0, Hand = 10, Field = 20, Cemetery = 30, Banish = 40, Create = 50;
 
@@ -25,9 +23,16 @@ public static class ShadowReconciler
 
     public static int Hoisted, Recovered, Unplaced;
 
-    // indices the wire has named on each side. a hand card in none of them was drawn by the shadow's own simulation and
-    // stands in for one the wire drew, so it is the one to give back when the hand is full
     static readonly HashSet<int> SeenSelf = new HashSet<int>(), SeenOppo = new HashSet<int>();
+
+    // The census is per match, and a room plays many. carrying it over makes Place refuse evictions the new match needs,
+    // so every battle after the first ran against the previous one's indices
+    public static void Reset()
+    {
+        SeenSelf.Clear();
+        SeenOppo.Clear();
+        Hoisted = Recovered = Unplaced = Evicted = 0;
+    }
 
     public static void Repair(BattleManagerBase mgr, string uri, Dictionary<string, object> body, bool isPlayer, int type, int playIdx)
     {
@@ -35,7 +40,6 @@ public static class ShadowReconciler
 
         var moves = Moves(body);
 
-        // where each side's cards have to be for this message to resolve
         var self = new Dictionary<int, int>();
         var oppo = new Dictionary<int, int>();
         foreach (var m in moves)
@@ -46,7 +50,6 @@ public static class ShadowReconciler
         // the acting card itself: hand for a play, board for an attack or an evolution
         if (playIdx > 0 && !self.ContainsKey(playIdx))
             self[playIdx] = (type == 10 || type == 20 || type == 21) ? Field : Hand;
-        // targets of an attack / evolve-select live on the board
         foreach (var t in Targets(body, isPlayer))
             if (t.idx > 0)
             {
@@ -83,9 +86,6 @@ public static class ShadowReconciler
         Place(mgr, isPlayer ? (BattlePlayerBase)mgr.BattleEnemy : mgr.BattlePlayer, oppo, isPlayer ? SeenOppo : SeenSelf);
     }
 
-    // only the deck -> hand direction is repaired: it is the one the shadow gets wrong on its own, and the one the
-    // engine has a real entry point for. DrawCards is the same call the opening deal uses, so the card lands in hand
-    // through the engine's own bookkeeping rather than being poked into a list
     const int HandLimit = 9;
 
     static void Place(BattleManagerBase mgr, BattlePlayerBase p, Dictionary<int, int> want, HashSet<int> seen)
@@ -102,7 +102,7 @@ public static class ShadowReconciler
         if (draw.Count == 0) return;
 
         // DrawCards discards straight to the cemetery past nine cards, and the hand is over-full precisely because the
-        // shadow drew cards of its own choosing. give those back first: they stand in for the cards this call is about
+        // shadow drew cards of its own choosing. Give those back first: they stand in for the cards this call is about
         // to put where they belong
         int over = p.HandCardList.Count + draw.Count - HandLimit;
         for (int i = 0; over > 0 && i < p.HandCardList.Count; )
@@ -121,7 +121,6 @@ public static class ShadowReconciler
 
     public static int Evicted;
 
-    // idx -> isSelf for every alter order (spellboost or cost); alters only ever land on hand cards
     static Dictionary<int, bool> Alters(Dictionary<string, object> body)
     {
         var d = new Dictionary<int, bool>();
@@ -185,7 +184,6 @@ public static class ShadowReconciler
         return list;
     }
 
-    // idx list of every "alter ... spellboost" order in the message (actor-relative isSelf==1 only)
     public static HashSet<int> ChargeIdxs(Dictionary<string, object> body)
     {
         var set = new HashSet<int>();

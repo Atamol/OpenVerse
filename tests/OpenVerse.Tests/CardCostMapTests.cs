@@ -4,11 +4,7 @@ namespace OpenVerse.Tests;
 
 public class CardCostMapTests
 {
-    static string? DataDir()
-    {
-        var d = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data");
-        return File.Exists(Path.Combine(d, "card_master_full.csv.gz")) ? d : null;
-    }
+    static string? DataDir() => Fixtures.DataDir();
 
     [Fact]
     public void MissingMasterYieldsEmptyMap()
@@ -44,14 +40,17 @@ public class CardCostMapTests
         if (DataDir() is not { } dir) return;
         var map = CardCostMap.Load(dir);
         Assert.True(map.Count > 10000);
-        // a few unplayable specials sit at 30; anything wilder means the column index drifted
+        // A few unplayable specials sit at 30. anything wilder means the column index drifted
         Assert.All(map.Values, c => Assert.InRange(c.BaseCost, 0, 30));
-        Assert.All(map.Values, c => Assert.InRange(c.SpellboostStep, 0, 5));
-        // spellboost discounts are a real but small minority; if this ever hits 0 the parse silently broke
+        // UnreadableStep (-1) means the card has a when_spell_charge cost_change whose step would not parse
+        Assert.All(map.Values, c => Assert.InRange(c.SpellboostStep, CardCostMap.UnreadableStep, 5));
+        // spellboost discounts are a real but small minority. if this ever hits 0 the parse silently broke
         Assert.InRange(map.Values.Count(c => c.SpellboostStep > 0), 1, 400);
+        // the relay declines to price anything in here, so a jump means the option column changed shape
+        Assert.InRange(map.Values.Count(c => c.SpellboostStep == CardCostMap.UnreadableStep), 0, 50);
     }
 
-    // the master carries a -1/-99 sentinel instead of a cost for a few rows; pricing off those would pin a bogus
+    // The master carries a -1/-99 sentinel instead of a cost for a few rows. pricing off those would pin a bogus
     // absolute cost on the peer, so they must not be in the map at all
     [Fact]
     public void SentinelCostRowsAreExcluded()

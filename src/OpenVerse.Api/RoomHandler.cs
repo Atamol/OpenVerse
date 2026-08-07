@@ -25,7 +25,17 @@ public sealed class RoomHandler
         path.StartsWith("/shadowverse/open_room/", StringComparison.OrdinalIgnoreCase) ||
         path.StartsWith("/shadowverse/open_room_battle/", StringComparison.OrdinalIgnoreCase);
 
-    public string Handle(string path, string reqJson, string ownerUdid)
+    public string Handle(string path, string reqJson, string ownerUdid, string sourceIp = "")
+    {
+        if (sourceIp.Length > 0) _ipByUdid[ownerUdid] = sourceIp;
+        return HandleCore(path, reqJson, ownerUdid);
+    }
+
+    // the API is the only side that sees where a request came from, and it is the only discriminator both processes
+    // can agree on: the client picks its own viewer_id and two installs have been seen picking the same one
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _ipByUdid = new();
+
+    string HandleCore(string path, string reqJson, string ownerUdid)
     {
         using var doc = JsonDocument.Parse(reqJson);
         var root = doc.RootElement;
@@ -39,7 +49,7 @@ public sealed class RoomHandler
             "force_release_room" => ForceRelease(ownerUdid),
             "initialize_room_battle" => InitializeBattle(root),
             "do_matching" => DoMatching(ownerUdid),
-            // set_deck carries the participant's chosen deck_no; stash it so do_matching can resolve the real deck
+            // set_deck carries the participant's chosen deck_no. stash it so do_matching can resolve the real deck
             "set_deck" => SetDeck(ownerUdid, root),
             "deck_entry" or "ban_deck" or "finish_load"
                 => JsonSerializer.Serialize(new { result_reason = 0 }),
@@ -103,16 +113,17 @@ public sealed class RoomHandler
             IsOwner = isOwner,
             ClassId = classId,
             SubClassId = deck.SubClassId,
-            // default leader chara_id equals class_id for the 8 base classes; GetClassPrm throws on 0/-1
+            // default leader chara_id equals class_id for the 8 base classes, and GetClassPrm throws on 0/-1
             CharaId = classId,
             SleeveId = deck.SleeveId,
             LeaderSkinId = deck.LeaderSkinId,
             CardIds = deck.CardIdArray,
             UserName = _users.GetOrCreate(udid).Name,
+            SourceIp = _ipByUdid.GetValueOrDefault(udid, ""),
         });
     }
 
-    // a card's class is its 100,000s digit (verified vs card master clan column). deck class = most common nonzero digit
+    // A card's class is its 100,000s digit (verified vs card master clan column). Deck class = most common nonzero digit
     static int ClassOf(int[] cardIds)
     {
         var digits = cardIds.Select(c => c / 100000 % 10).Where(d => d is >= 1 and <= 8).ToList();
