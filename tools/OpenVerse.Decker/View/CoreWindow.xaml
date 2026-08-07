@@ -1,0 +1,14 @@
+<Window x:Class="OpenVerse.Decker.View.CoreWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:OpenVerse.Decker.View"
+        Title="{DynamicResource AppTitle}"
+        Height="700"
+        Width="1100">
+    <Grid>
+        <!-- the current screen -->
+        <ContentControl x:Name="ScreenHost"/>
+
+        <local:FocusedScreen x:Name="Focused"/>
+    </Grid>
+</Window>

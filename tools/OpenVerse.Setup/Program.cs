@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using OpenVerse.Common;
 
 // content hash of the final (post-shutdown) card_master. a client whose cache hashes differently synced
@@ -40,10 +41,60 @@ var latest = extracted && ContentHash(csv!) == LatestHash;
 string[] bundled = ["practice_info.json", "starter_decks.json", "deck_intro.json"];
 var haveBundled = bundled.All(f => File.Exists(Path.Combine(outDir, f)));
 
+var textPaths = new Dictionary<string, string>()
+{
+    [Path.Combine(outDir, "master_skilldesctext.json")] = Path.Combine(clientData, "a", "master_skilldesctext.unity3d"),
+    [Path.Combine(outDir, "master_cardnametext.json")] = Path.Combine(clientData, "a", "master_cardnametext.unity3d")
+};
+
+var textResult = new Dictionary<string, bool>();
+
+foreach (var (json, unity3d) in textPaths)
+{
+    var jsonTitle = Path.GetFileNameWithoutExtension(unity3d);
+    var result = LoadUnity3DAssets(unity3d, json, jsonTitle);
+    textResult[jsonTitle] = result;
+}
+
 Console.WriteLine();
 Console.WriteLine(extracted ? "  [ok] card_master" : "  [--] card_master (not extracted)");
 foreach (var f in bundled)
     Console.WriteLine(File.Exists(Path.Combine(outDir, f)) ? $"  [ok] {f}" : $"  [--] {f} (missing)");
+var textResultComplete = true;
+foreach ((var jsonTitle, var result) in textResult)
+{
+    Console.WriteLine(result ? $"  [ok] {jsonTitle}" : $"  [--] {jsonTitle} (failed)");
+    textResultComplete &= result;
+}
+
+var cardNameJsonPath = Path.Combine(outDir, "master_cardnametext.json");
+var skillDescJsonPath = Path.Combine(outDir, "master_skilldesctext.json");
+var textlangsPath = Path.Combine(outDir, "textlangs.json");
+
+var textlangsSuccess = false;
+if (File.Exists(cardNameJsonPath) && File.Exists(skillDescJsonPath))
+{
+    try
+    {
+        var cardNameLangs = ReadSecondLevelKeys(cardNameJsonPath);
+        var skillDescLangs = ReadSecondLevelKeys(skillDescJsonPath);
+        if (cardNameLangs.ToHashSet().SetEquals(skillDescLangs))
+        {
+            File.WriteAllText(textlangsPath, JsonSerializer.Serialize(cardNameLangs));
+            textlangsSuccess = true;
+        }
+        else
+        {
+            Console.Error.WriteLine("textlangs.json: language keys disagree between master_cardnametext.json and master_skilldesctext.json");
+        }
+    }
+    catch (Exception e)
+    {
+        Console.Error.WriteLine($"textlangs.json: failed to build ({e.Message})");
+    }
+}
+Console.WriteLine(textlangsSuccess ? "  [ok] textlangs.json" : "  [--] textlangs.json (not created)");
+
 if (extracted && !latest)
     Console.WriteLine("  [!] card_master is not the final version");
 
@@ -57,7 +108,12 @@ var (title, body, icon) =
     : ("セットアップ完了", "セットアップが完了しました。openverse-launcher を実行して遊べます。", MbInfo);
 
 Console.WriteLine(body.Replace("\n", " "));
+
+var textResultLog = (textResultComplete && textlangsSuccess) ? "外部デッキ構築ツールの準備が完了しました。いつでも自由なデッキをopenverse-deckerで構築できます。" : "外部デッキ構築ツールの準備に失敗しました。ゲームのセットアップに影響はありませんが、openverse-deckerは起動に失敗することになります。master_skilldesctext.json / master_cardnametext.json / textlangs.json の準備に失敗しています。";
+Console.WriteLine(textResultLog);
+
 if (!args.Contains("--quiet")) Notify(title, body, icon);
+
 return ready ? 0 : 1;
 
 // try each cache line and take the one that decrypts to the CSV (line layout differs across cache slots)
@@ -101,6 +157,38 @@ static string ContentHash(string csv)
 static void Notify(string title, string body, uint icon)
 {
     if (OperatingSystem.IsWindows()) MessageBoxW(IntPtr.Zero, body, title, icon);
+}
+
+// the master text jsons are always shaped {"<bundlename>": {"<lang>": {"<KEY>": "<text>", ...}, ...}} -
+// this reads all the <lang>
+static string[] ReadSecondLevelKeys(string jsonPath)
+{
+    using var doc = JsonDocument.Parse(File.ReadAllText(jsonPath));
+    var top = doc.RootElement.EnumerateObject().First().Value;
+    return top.EnumerateObject().Select(p => p.Name).ToArray();
+}
+
+static bool LoadUnity3DAssets(string inPath, string outPath, string title)
+{
+    if (!File.Exists(inPath))
+    {
+        Console.Error.WriteLine($"{title} : could not find a unity 3d asset {inPath}");
+        return false;
+    }
+
+    try
+    {
+        Unity3DLoader.ConvertToJson(inPath, outPath);
+    }
+    catch (Exception e)
+    {
+        Console.Error.WriteLine($"{title} : failed to convert {inPath} to json: {e}");
+        return false;
+    }
+
+    Console.WriteLine($"{title}: {inPath} -> {outPath}");
+
+    return true;
 }
 
 [DllImport("user32.dll", CharSet = CharSet.Unicode)]

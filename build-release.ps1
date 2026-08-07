@@ -21,6 +21,7 @@ Remove-Item -Recurse -Force $rel -ErrorAction SilentlyContinue
 $projects = @(
   "tools/OpenVerse.Setup/OpenVerse.Setup.csproj",
   "tools/OpenVerse.Launcher/OpenVerse.Launcher.csproj",
+  "tools/OpenVerse.Decker/OpenVerse.Decker.csproj",
   "src/OpenVerse.Api/OpenVerse.Api.csproj",
   "src/OpenVerse.Battle/OpenVerse.Battle.csproj"
 )
@@ -33,7 +34,7 @@ foreach ($p in $projects) {
 
 $keep = @("practice_info.json", "starter_decks.json", "deck_intro.json", "leader_skin_list.json")
 Get-ChildItem (Join-Path $rel "data") -File -ErrorAction SilentlyContinue |
-  Where-Object { $keep -notcontains $_.Name } | Remove-Item -Force
+Where-Object { $keep -notcontains $_.Name } | Remove-Item -Force
 Remove-Item -Recurse -Force (Join-Path $rel "certs") -ErrorAction SilentlyContinue
 Remove-Item -Force (Join-Path $rel "openverse.cer") -ErrorAction SilentlyContinue
 
@@ -52,7 +53,7 @@ Set-Content -Path (Join-Path $rel "engine.txt") -Value "# Observe | AdviseCost |
 $zip = Join-Path $PSScriptRoot "OpenVerse.zip"
 Remove-Item -Force $zip -ErrorAction SilentlyContinue
 
-$exes = @("openverse-setup.exe", "openverse-launcher.exe", "OpenVerse.Api.exe", "OpenVerse.Battle.exe")
+$exes = @("openverse-setup.exe", "openverse-launcher.exe", "openverse-decker.exe", "OpenVerse.Api.exe", "OpenVerse.Battle.exe")
 foreach ($e in $exes) { if (-not (Test-Path (Join-Path $rel $e))) { throw "missing from publish: $e" } }
 $ship = ($exes + @("host.txt", "name.txt", "engine.txt", "data", "stubs")) | ForEach-Object { Join-Path $rel $_ }
 Compress-Archive -Path $ship -DestinationPath $zip -CompressionLevel Optimal

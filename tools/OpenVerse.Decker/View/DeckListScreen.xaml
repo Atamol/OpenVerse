@@ -1,0 +1,82 @@
+<UserControl x:Class="OpenVerse.Decker.View.DeckListScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                  Margin="24">
+        <StackPanel>
+            <TextBlock Text="{DynamicResource DeckListHeader}"
+                       FontSize="18"
+                       FontWeight="Bold"
+                       Margin="0,0,0,16"/>
+            <TextBlock x:Name="ErrorText"
+                       Foreground="Red"
+                       Margin="0,0,0,12"
+                       TextWrapping="Wrap"/>
+            <ItemsControl ItemsSource="{Binding Decks}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <!-- a Border, not a Button: the row's own click behavior is driven by
+                             comparing MouseLeftButtonDown/Up positions in code-behind (see
+                             Row_MouseLeftButtonDown/Up) rather than the Click routed event, so a
+                             future drag-to-reorder feature can layer on top of the same
+                             down/move/up handlers without fighting Button's own click machinery.
+                             The inner "x" delete Button still works normally on its own: WPF marks
+                             a child Button's own mouse-down/up handled once it processes them for
+                             its click gesture, so those never reach this Border's handlers below -->
+                        <Border Margin="0,0,0,8"
+                                Padding="12,10"
+                                MaxWidth="500"
+                                HorizontalAlignment="Stretch"
+                                Background="#F0F0F0"
+                                BorderBrush="#CCCCCC"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                MouseLeftButtonDown="Row_MouseLeftButtonDown"
+                                MouseLeftButtonUp="Row_MouseLeftButtonUp">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver"
+                                                 Value="True">
+                                            <Setter Property="Background"
+                                                    Value="#E0E0E0"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding DeckName}"
+                                           FontSize="14"
+                                           VerticalAlignment="Center"/>
+                                <!-- only real decks get a delete button - the "add a new deck" row has none -->
+                                <Button Grid.Column="1"
+                                        Content="×"
+                                        FontWeight="Bold"
+                                        Padding="8,2"
+                                        Margin="12,0,0,0"
+                                        Click="DeleteButton_Click">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsAddButton}"
+                                                             Value="True">
+                                                    <Setter Property="Visibility"
+                                                            Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

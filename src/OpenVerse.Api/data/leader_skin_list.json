@@ -1,1158 +1,1736 @@
 [
   {
     "leader_skin_id": 1,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アリサ",
+    "clan": 1
   },
   {
     "leader_skin_id": 2,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エリカ",
+    "clan": 2
   },
   {
     "leader_skin_id": 3,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イザベル",
+    "clan": 3
   },
   {
     "leader_skin_id": 4,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ローウェン",
+    "clan": 4
   },
   {
     "leader_skin_id": 5,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ルナ",
+    "clan": 5
   },
   {
     "leader_skin_id": 6,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ユリアス",
+    "clan": 6
   },
   {
     "leader_skin_id": 7,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イリス",
+    "clan": 7
   },
   {
     "leader_skin_id": 8,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ユアン",
+    "clan": 8
   },
   {
     "leader_skin_id": 101,
-    "is_owned": true
+    "is_owned": true,
+    "name": "セルウィン",
+    "clan": 1
   },
   {
     "leader_skin_id": 102,
-    "is_owned": true
+    "is_owned": true,
+    "name": "レイサム",
+    "clan": 2
   },
   {
     "leader_skin_id": 103,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エラスムス",
+    "clan": 3
   },
   {
     "leader_skin_id": 104,
-    "is_owned": true
+    "is_owned": true,
+    "name": "フォルテ",
+    "clan": 4
   },
   {
     "leader_skin_id": 105,
-    "is_owned": true
+    "is_owned": true,
+    "name": "モルディカイ",
+    "clan": 5
   },
   {
     "leader_skin_id": 106,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ヴァンピィ",
+    "clan": 6
   },
   {
     "leader_skin_id": 107,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ガルラ",
+    "clan": 7
   },
   {
     "leader_skin_id": 201,
-    "is_owned": true
+    "is_owned": true,
+    "name": "キャミィ",
+    "clan": 1
   },
   {
     "leader_skin_id": 202,
-    "is_owned": true
+    "is_owned": true,
+    "name": "春麗",
+    "clan": 2
   },
   {
     "leader_skin_id": 203,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ジュリ",
+    "clan": 3
   },
   {
     "leader_skin_id": 204,
-    "is_owned": true
+    "is_owned": true,
+    "name": "リュウ",
+    "clan": 4
   },
   {
     "leader_skin_id": 205,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ベガ",
+    "clan": 5
   },
   {
     "leader_skin_id": 206,
-    "is_owned": true
+    "is_owned": true,
+    "name": "バルログ",
+    "clan": 6
   },
   {
     "leader_skin_id": 207,
-    "is_owned": true
+    "is_owned": true,
+    "name": "かりん",
+    "clan": 7
   },
   {
     "leader_skin_id": 301,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アーチャー",
+    "clan": 1
   },
   {
     "leader_skin_id": 302,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ランサー",
+    "clan": 2
   },
   {
     "leader_skin_id": 303,
-    "is_owned": true
+    "is_owned": true,
+    "name": "遠坂凛",
+    "clan": 3
   },
   {
     "leader_skin_id": 304,
-    "is_owned": true
+    "is_owned": true,
+    "name": "セイバー",
+    "clan": 4
   },
   {
     "leader_skin_id": 305,
-    "is_owned": true
+    "is_owned": true,
+    "name": "セイバーオルタ",
+    "clan": 5
   },
   {
     "leader_skin_id": 306,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ライダー",
+    "clan": 6
   },
   {
     "leader_skin_id": 307,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イリヤ",
+    "clan": 7
   },
   {
     "leader_skin_id": 401,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アリア",
+    "clan": 1
   },
   {
     "leader_skin_id": 402,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アルベール",
+    "clan": 2
   },
   {
     "leader_skin_id": 403,
-    "is_owned": true
+    "is_owned": true,
+    "name": "次元の魔女・ドロシー",
+    "clan": 3
   },
   {
     "leader_skin_id": 404,
-    "is_owned": true
+    "is_owned": true,
+    "name": "インペリアルドラグーン",
+    "clan": 4
   },
   {
     "leader_skin_id": 405,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ケルベロス",
+    "clan": 5
   },
   {
     "leader_skin_id": 406,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エクセラ",
+    "clan": 6
   },
   {
     "leader_skin_id": 407,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ラミナ",
+    "clan": 7
   },
   {
     "leader_skin_id": 408,
-    "is_owned": true
+    "is_owned": true,
+    "name": "スピネ",
+    "clan": 8
   },
   {
     "leader_skin_id": 504,
-    "is_owned": true
+    "is_owned": true,
+    "name": "龍化ローウェン",
+    "clan": 4
   },
   {
     "leader_skin_id": 508,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ネクサス",
+    "clan": 8
   },
   {
     "leader_skin_id": 601,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ディートリッヒ",
+    "clan": 1
   },
   {
     "leader_skin_id": 603,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ファリン",
+    "clan": 3
   },
   {
     "leader_skin_id": 701,
-    "is_owned": true
+    "is_owned": true,
+    "name": "コルワ",
+    "clan": 1
   },
   {
     "leader_skin_id": 702,
-    "is_owned": true
+    "is_owned": true,
+    "name": "パーシヴァル",
+    "clan": 2
   },
   {
     "leader_skin_id": 703,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カリオストロ",
+    "clan": 3
   },
   {
     "leader_skin_id": 704,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ゾーイ",
+    "clan": 4
   },
   {
     "leader_skin_id": 705,
-    "is_owned": true
+    "is_owned": true,
+    "name": "フェリ",
+    "clan": 5
   },
   {
     "leader_skin_id": 706,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ヴィーラ",
+    "clan": 6
   },
   {
     "leader_skin_id": 707,
-    "is_owned": true
+    "is_owned": true,
+    "name": "レ・フィーエ",
+    "clan": 7
   },
   {
     "leader_skin_id": 708,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シルヴァ",
+    "clan": 8
   },
   {
     "leader_skin_id": 801,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カシオペア",
+    "clan": 1
   },
   {
     "leader_skin_id": 802,
-    "is_owned": true
+    "is_owned": true,
+    "name": "メリッサ",
+    "clan": 2
   },
   {
     "leader_skin_id": 803,
-    "is_owned": true
+    "is_owned": true,
+    "name": "オズの大魔女",
+    "clan": 3
   },
   {
     "leader_skin_id": 804,
-    "is_owned": true
+    "is_owned": true,
+    "name": "フィルレイン",
+    "clan": 4
   },
   {
     "leader_skin_id": 805,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アイシャ",
+    "clan": 5
   },
   {
     "leader_skin_id": 806,
-    "is_owned": true
+    "is_owned": true,
+    "name": "メドゥーサ",
+    "clan": 6
   },
   {
     "leader_skin_id": 807,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ブローディア",
+    "clan": 7
   },
   {
     "leader_skin_id": 808,
-    "is_owned": true
+    "is_owned": true,
+    "name": "オーキス",
+    "clan": 8
   },
   {
     "leader_skin_id": 901,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ギルガメッシュ",
+    "clan": 1
   },
   {
     "leader_skin_id": 902,
-    "is_owned": true
+    "is_owned": true,
+    "name": "真アサシン",
+    "clan": 2
   },
   {
     "leader_skin_id": 903,
-    "is_owned": true
+    "is_owned": true,
+    "name": "遠坂凛 制服ver.",
+    "clan": 3
   },
   {
     "leader_skin_id": 904,
-    "is_owned": true
+    "is_owned": true,
+    "name": "衛宮士郎",
+    "clan": 4
   },
   {
     "leader_skin_id": 905,
-    "is_owned": true
+    "is_owned": true,
+    "name": "間桐桜",
+    "clan": 5
   },
   {
     "leader_skin_id": 906,
-    "is_owned": true
+    "is_owned": true,
+    "name": "間桐慎二",
+    "clan": 6
   },
   {
     "leader_skin_id": 907,
-    "is_owned": true
+    "is_owned": true,
+    "name": "バーサーカー",
+    "clan": 7
   },
   {
     "leader_skin_id": 908,
-    "is_owned": true
+    "is_owned": true,
+    "name": "言峰綺礼",
+    "clan": 8
   },
   {
     "leader_skin_id": 1001,
-    "is_owned": true
+    "is_owned": true,
+    "name": "コッコロ",
+    "clan": 1
   },
   {
     "leader_skin_id": 1002,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ペコリーヌ",
+    "clan": 2
   },
   {
     "leader_skin_id": 1003,
-    "is_owned": true
+    "is_owned": true,
+    "name": "キャル",
+    "clan": 3
   },
   {
     "leader_skin_id": 1103,
-    "is_owned": true
+    "is_owned": true,
+    "name": "タツマキ",
+    "clan": 3
   },
   {
     "leader_skin_id": 1104,
-    "is_owned": true
+    "is_owned": true,
+    "name": "サイタマ",
+    "clan": 4
   },
   {
     "leader_skin_id": 1108,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ジェノス",
+    "clan": 8
   },
   {
     "leader_skin_id": 1203,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アン",
+    "clan": 3
   },
   {
     "leader_skin_id": 1301,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エミリア",
+    "clan": 1
   },
   {
     "leader_skin_id": 1302,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ラム",
+    "clan": 2
   },
   {
     "leader_skin_id": 1306,
-    "is_owned": true
+    "is_owned": true,
+    "name": "レム",
+    "clan": 6
   },
   {
     "leader_skin_id": 1401,
-    "is_owned": true
+    "is_owned": true,
+    "name": "松浦果南",
+    "clan": 1
   },
   {
     "leader_skin_id": 1402,
-    "is_owned": true
+    "is_owned": true,
+    "name": "渡辺曜",
+    "clan": 2
   },
   {
     "leader_skin_id": 1403,
-    "is_owned": true
+    "is_owned": true,
+    "name": "黒澤ダイヤ",
+    "clan": 3
   },
   {
     "leader_skin_id": 1404,
-    "is_owned": true
+    "is_owned": true,
+    "name": "高海千歌",
+    "clan": 4
   },
   {
     "leader_skin_id": 1405,
-    "is_owned": true
+    "is_owned": true,
+    "name": "小原鞠莉",
+    "clan": 5
   },
   {
     "leader_skin_id": 1406,
-    "is_owned": true
+    "is_owned": true,
+    "name": "津島善子",
+    "clan": 6
   },
   {
     "leader_skin_id": 1407,
-    "is_owned": true
+    "is_owned": true,
+    "name": "国木田花丸",
+    "clan": 7
   },
   {
     "leader_skin_id": 1408,
-    "is_owned": true
+    "is_owned": true,
+    "name": "桜内梨子",
+    "clan": 8
   },
   {
     "leader_skin_id": 1413,
-    "is_owned": true
+    "is_owned": true,
+    "name": "黒澤ルビィ",
+    "clan": 3
   },
   {
     "leader_skin_id": 1601,
-    "is_owned": true
+    "is_owned": true,
+    "name": "リザ",
+    "clan": 1
   },
   {
     "leader_skin_id": 1602,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ディオネ",
+    "clan": 2
   },
   {
     "leader_skin_id": 1603,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ティオ",
+    "clan": 3
   },
   {
     "leader_skin_id": 1604,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ガルミーユ",
+    "clan": 4
   },
   {
     "leader_skin_id": 1605,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エンネア",
+    "clan": 5
   },
   {
     "leader_skin_id": 1606,
-    "is_owned": true
+    "is_owned": true,
+    "name": "モノ2",
+    "clan": 6
   },
   {
     "leader_skin_id": 1607,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ラピス",
+    "clan": 7
   },
   {
     "leader_skin_id": 1608,
-    "is_owned": true
+    "is_owned": true,
+    "name": "リーシェナ",
+    "clan": 8
   },
   {
     "leader_skin_id": 1702,
-    "is_owned": true
+    "is_owned": true,
+    "name": "朝比奈みくる",
+    "clan": 2
   },
   {
     "leader_skin_id": 1703,
-    "is_owned": true
+    "is_owned": true,
+    "name": "長門有希",
+    "clan": 3
   },
   {
     "leader_skin_id": 1708,
-    "is_owned": true
+    "is_owned": true,
+    "name": "涼宮ハルヒ",
+    "clan": 8
   },
   {
     "leader_skin_id": 1803,
-    "is_owned": true
+    "is_owned": true,
+    "name": "キョウカ",
+    "clan": 3
   },
   {
     "leader_skin_id": 1804,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カヤ",
+    "clan": 4
   },
   {
     "leader_skin_id": 1805,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ミヤコ",
+    "clan": 5
   },
   {
     "leader_skin_id": 1806,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イリヤ(プリコネ)",
+    "clan": 6
   },
   {
     "leader_skin_id": 1807,
-    "is_owned": true
+    "is_owned": true,
+    "name": "サレン",
+    "clan": 7
   },
   {
     "leader_skin_id": 1808,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カイザーインサイト",
+    "clan": 8
   },
   {
     "leader_skin_id": 1815,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シノブ",
+    "clan": 5
   },
   {
     "leader_skin_id": 1901,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アリサ2",
+    "clan": 1
   },
   {
     "leader_skin_id": 1902,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エリカ2",
+    "clan": 2
   },
   {
     "leader_skin_id": 1903,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イザベル2",
+    "clan": 3
   },
   {
     "leader_skin_id": 1904,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ローウェン2",
+    "clan": 4
   },
   {
     "leader_skin_id": 1905,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ルナ2",
+    "clan": 5
   },
   {
     "leader_skin_id": 1906,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ユリアス2",
+    "clan": 6
   },
   {
     "leader_skin_id": 1907,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イリス2",
+    "clan": 7
   },
   {
     "leader_skin_id": 1908,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ユアン2",
+    "clan": 8
   },
   {
     "leader_skin_id": 2001,
-    "is_owned": true
+    "is_owned": true,
+    "name": "高森藍子",
+    "clan": 1
   },
   {
     "leader_skin_id": 2002,
-    "is_owned": true
+    "is_owned": true,
+    "name": "五十嵐響子",
+    "clan": 2
   },
   {
     "leader_skin_id": 2003,
-    "is_owned": true
+    "is_owned": true,
+    "name": "鷺沢文香",
+    "clan": 3
   },
   {
     "leader_skin_id": 2004,
-    "is_owned": true
+    "is_owned": true,
+    "name": "大槻唯",
+    "clan": 4
   },
   {
     "leader_skin_id": 2005,
-    "is_owned": true
+    "is_owned": true,
+    "name": "白坂小梅",
+    "clan": 5
   },
   {
     "leader_skin_id": 2006,
-    "is_owned": true
+    "is_owned": true,
+    "name": "佐久間まゆ",
+    "clan": 6
   },
   {
     "leader_skin_id": 2007,
-    "is_owned": true
+    "is_owned": true,
+    "name": "安部菜々",
+    "clan": 7
   },
   {
     "leader_skin_id": 2008,
-    "is_owned": true
+    "is_owned": true,
+    "name": "諸星きらり",
+    "clan": 8
   },
   {
     "leader_skin_id": 2018,
-    "is_owned": true
+    "is_owned": true,
+    "name": "北条加蓮",
+    "clan": 8
   },
   {
     "leader_skin_id": 2103,
-    "is_owned": true
+    "is_owned": true,
+    "name": "グレア",
+    "clan": 3
   },
   {
     "leader_skin_id": 2202,
-    "is_owned": true
+    "is_owned": true,
+    "name": "2B",
+    "clan": 2
   },
   {
     "leader_skin_id": 2208,
-    "is_owned": true
+    "is_owned": true,
+    "name": "9S",
+    "clan": 8
   },
   {
     "leader_skin_id": 2303,
-    "is_owned": true
+    "is_owned": true,
+    "name": "レイ",
+    "clan": 3
   },
   {
     "leader_skin_id": 2307,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カグラ",
+    "clan": 7
   },
   {
     "leader_skin_id": 2401,
-    "is_owned": true
+    "is_owned": true,
+    "name": "C.C.",
+    "clan": 1
   },
   {
     "leader_skin_id": 2402,
-    "is_owned": true
+    "is_owned": true,
+    "name": "スザク",
+    "clan": 2
   },
   {
     "leader_skin_id": 2403,
-    "is_owned": true
+    "is_owned": true,
+    "name": "コーネリア",
+    "clan": 3
   },
   {
     "leader_skin_id": 2404,
-    "is_owned": true
+    "is_owned": true,
+    "name": "星刻",
+    "clan": 4
   },
   {
     "leader_skin_id": 2405,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ルルーシュ",
+    "clan": 5
   },
   {
     "leader_skin_id": 2406,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カレン",
+    "clan": 6
   },
   {
     "leader_skin_id": 2407,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シャルル",
+    "clan": 7
   },
   {
     "leader_skin_id": 2408,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ジェレミア",
+    "clan": 8
   },
   {
     "leader_skin_id": 2501,
-    "is_owned": true
+    "is_owned": true,
+    "name": "セタス(ストック)",
+    "clan": 1
   },
   {
     "leader_skin_id": 2505,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ツキカゲ2",
+    "clan": 5
   },
   {
     "leader_skin_id": 2507,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ムニャール2",
+    "clan": 7
   },
   {
     "leader_skin_id": 2508,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ゼシルウェンシー2",
+    "clan": 8
   },
   {
     "leader_skin_id": 2513,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ヴィンセント(ストック)",
+    "clan": 3
   },
   {
     "leader_skin_id": 2515,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ニコラ",
+    "clan": 5
   },
   {
     "leader_skin_id": 2518,
-    "is_owned": true
+    "is_owned": true,
+    "name": "フローゼス2",
+    "clan": 8
   },
   {
     "leader_skin_id": 2523,
-    "is_owned": true
+    "is_owned": true,
+    "name": "テトラ(ストック)",
+    "clan": 3
   },
   {
     "leader_skin_id": 2601,
-    "is_owned": true
+    "is_owned": true,
+    "name": "セッカ",
+    "clan": 1
   },
   {
     "leader_skin_id": 2602,
-    "is_owned": true
+    "is_owned": true,
+    "name": "バニー",
+    "clan": 2
   },
   {
     "leader_skin_id": 2603,
-    "is_owned": true
+    "is_owned": true,
+    "name": "マイザー",
+    "clan": 3
   },
   {
     "leader_skin_id": 2604,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ドラーク",
+    "clan": 4
   },
   {
     "leader_skin_id": 2605,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カゲロウ",
+    "clan": 5
   },
   {
     "leader_skin_id": 2606,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アルザード",
+    "clan": 6
   },
   {
     "leader_skin_id": 2607,
-    "is_owned": true
+    "is_owned": true,
+    "name": "セリーナ",
+    "clan": 7
   },
   {
     "leader_skin_id": 2608,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イルガンノ",
+    "clan": 8
   },
   {
     "leader_skin_id": 2612,
-    "is_owned": true
+    "is_owned": true,
+    "name": "バロン",
+    "clan": 2
   },
   {
     "leader_skin_id": 2701,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ミモリ",
+    "clan": 1
   },
   {
     "leader_skin_id": 2702,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カズキ",
+    "clan": 2
   },
   {
     "leader_skin_id": 2703,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カイ",
+    "clan": 3
   },
   {
     "leader_skin_id": 2704,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ヒイロ",
+    "clan": 4
   },
   {
     "leader_skin_id": 2705,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アリス",
+    "clan": 5
   },
   {
     "leader_skin_id": 2706,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ルシア",
+    "clan": 6
   },
   {
     "leader_skin_id": 2707,
-    "is_owned": true
+    "is_owned": true,
+    "name": "マウラ",
+    "clan": 7
   },
   {
     "leader_skin_id": 2801,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ラティカ2",
+    "clan": 1
   },
   {
     "leader_skin_id": 2802,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ツバキ",
+    "clan": 2
   },
   {
     "leader_skin_id": 2803,
-    "is_owned": true
+    "is_owned": true,
+    "name": "クオン",
+    "clan": 3
   },
   {
     "leader_skin_id": 2804,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ヴァイディ2",
+    "clan": 4
   },
   {
     "leader_skin_id": 2805,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ギンセツ",
+    "clan": 5
   },
   {
     "leader_skin_id": 2806,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ユヅキ",
+    "clan": 6
   },
   {
     "leader_skin_id": 2807,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エイラ",
+    "clan": 7
   },
   {
     "leader_skin_id": 2808,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ララミア",
+    "clan": 8
   },
   {
     "leader_skin_id": 2811,
-    "is_owned": true
+    "is_owned": true,
+    "name": "オムニス",
+    "clan": 1
   },
   {
     "leader_skin_id": 2814,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ローラ",
+    "clan": 4
   },
   {
     "leader_skin_id": 2818,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ベルフォメット2",
+    "clan": 8
   },
   {
     "leader_skin_id": 2824,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アイラ",
+    "clan": 4
   },
   {
     "leader_skin_id": 2901,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ソーン",
+    "clan": 1
   },
   {
     "leader_skin_id": 2902,
-    "is_owned": true
+    "is_owned": true,
+    "name": "オクトー",
+    "clan": 2
   },
   {
     "leader_skin_id": 2903,
-    "is_owned": true
+    "is_owned": true,
+    "name": "フュンフ",
+    "clan": 3
   },
   {
     "leader_skin_id": 2904,
-    "is_owned": true
+    "is_owned": true,
+    "name": "サラーサ",
+    "clan": 4
   },
   {
     "leader_skin_id": 2905,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ニオ",
+    "clan": 5
   },
   {
     "leader_skin_id": 2906,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シス",
+    "clan": 6
   },
   {
     "leader_skin_id": 2907,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ウーノ",
+    "clan": 7
   },
   {
     "leader_skin_id": 2908,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エッセル",
+    "clan": 8
   },
   {
     "leader_skin_id": 2912,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シエテ",
+    "clan": 2
   },
   {
     "leader_skin_id": 2918,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カトル",
+    "clan": 8
   },
   {
     "leader_skin_id": 3001,
-    "is_owned": true
+    "is_owned": true,
+    "name": "藤原千花",
+    "clan": 1
   },
   {
     "leader_skin_id": 3002,
-    "is_owned": true
+    "is_owned": true,
+    "name": "四宮かぐや",
+    "clan": 2
   },
   {
     "leader_skin_id": 3003,
-    "is_owned": true
+    "is_owned": true,
+    "name": "白銀御行",
+    "clan": 3
   },
   {
     "leader_skin_id": 3101,
-    "is_owned": true
+    "is_owned": true,
+    "name": "森久保乃々",
+    "clan": 1
   },
   {
     "leader_skin_id": 3102,
-    "is_owned": true
+    "is_owned": true,
+    "name": "島村卯月",
+    "clan": 2
   },
   {
     "leader_skin_id": 3103,
-    "is_owned": true
+    "is_owned": true,
+    "name": "辻野あかり",
+    "clan": 3
   },
   {
     "leader_skin_id": 3104,
-    "is_owned": true
+    "is_owned": true,
+    "name": "本田未央",
+    "clan": 4
   },
   {
     "leader_skin_id": 3105,
-    "is_owned": true
+    "is_owned": true,
+    "name": "早坂美玲",
+    "clan": 5
   },
   {
     "leader_skin_id": 3106,
-    "is_owned": true
+    "is_owned": true,
+    "name": "星輝子",
+    "clan": 6
   },
   {
     "leader_skin_id": 3107,
-    "is_owned": true
+    "is_owned": true,
+    "name": "夢見りあむ",
+    "clan": 7
   },
   {
     "leader_skin_id": 3108,
-    "is_owned": true
+    "is_owned": true,
+    "name": "砂塚あきら",
+    "clan": 8
   },
   {
     "leader_skin_id": 3111,
-    "is_owned": true
+    "is_owned": true,
+    "name": "渋谷凛",
+    "clan": 1
   },
   {
     "leader_skin_id": 3201,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ブリリアントフェアリー",
+    "clan": 1
   },
   {
     "leader_skin_id": 3204,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イグニスドラゴン",
+    "clan": 4
   },
   {
     "leader_skin_id": 3206,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ダークエンペラー",
+    "clan": 6
   },
   {
     "leader_skin_id": 3208,
-    "is_owned": true
+    "is_owned": true,
+    "name": "レオン",
+    "clan": 8
   },
   {
     "leader_skin_id": 3301,
-    "is_owned": true
+    "is_owned": true,
+    "name": "セッカ上位",
+    "clan": 1
   },
   {
     "leader_skin_id": 3302,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ナハト・ナハト上位",
+    "clan": 2
   },
   {
     "leader_skin_id": 3303,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ルーニィ上位",
+    "clan": 3
   },
   {
     "leader_skin_id": 3304,
-    "is_owned": true
+    "is_owned": true,
+    "name": "万華の鳳凰上位",
+    "clan": 4
   },
   {
     "leader_skin_id": 3305,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エイミー",
+    "clan": 5
   },
   {
     "leader_skin_id": 3306,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ラウラ上位",
+    "clan": 6
   },
   {
     "leader_skin_id": 3307,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ジャンヌ上位",
+    "clan": 7
   },
   {
     "leader_skin_id": 3308,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アイシィレンドリング2",
+    "clan": 8
   },
   {
     "leader_skin_id": 3311,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ローフラッド",
+    "clan": 1
   },
   {
     "leader_skin_id": 3315,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ミルティオ上位",
+    "clan": 5
   },
   {
     "leader_skin_id": 3318,
-    "is_owned": true
+    "is_owned": true,
+    "name": "マグナゼロ",
+    "clan": 8
   },
   {
     "leader_skin_id": 3328,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ルチル上位",
+    "clan": 8
   },
   {
     "leader_skin_id": 3401,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ホロホロ",
+    "clan": 1
   },
   {
     "leader_skin_id": 3402,
-    "is_owned": true
+    "is_owned": true,
+    "name": "麻倉 葉",
+    "clan": 2
   },
   {
     "leader_skin_id": 3403,
-    "is_owned": true
+    "is_owned": true,
+    "name": "恐山アンナ",
+    "clan": 3
   },
   {
     "leader_skin_id": 3404,
-    "is_owned": true
+    "is_owned": true,
+    "name": "道 蓮",
+    "clan": 4
   },
   {
     "leader_skin_id": 3405,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ファウストⅧ世",
+    "clan": 5
   },
   {
     "leader_skin_id": 3406,
-    "is_owned": true
+    "is_owned": true,
+    "name": "梅宮竜之介",
+    "clan": 6
   },
   {
     "leader_skin_id": 3407,
-    "is_owned": true
+    "is_owned": true,
+    "name": "リゼルグ・ダイゼル",
+    "clan": 7
   },
   {
     "leader_skin_id": 3408,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ハオ",
+    "clan": 8
   },
   {
     "leader_skin_id": 3502,
-    "is_owned": true
+    "is_owned": true,
+    "name": "タケツミ",
+    "clan": 2
   },
   {
     "leader_skin_id": 3504,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ミズチ",
+    "clan": 4
   },
   {
     "leader_skin_id": 3505,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アンサージュ",
+    "clan": 5
   },
   {
     "leader_skin_id": 3506,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イツルギ",
+    "clan": 6
   },
   {
     "leader_skin_id": 3514,
-    "is_owned": true
+    "is_owned": true,
+    "name": "スーロン",
+    "clan": 4
   },
   {
     "leader_skin_id": 3516,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イツルギ(青年)",
+    "clan": 6
   },
   {
     "leader_skin_id": 3601,
-    "is_owned": true
+    "is_owned": true,
+    "name": "サイレンススズカ",
+    "clan": 1
   },
   {
     "leader_skin_id": 3602,
-    "is_owned": true
+    "is_owned": true,
+    "name": "トウカイテイオー",
+    "clan": 2
   },
   {
     "leader_skin_id": 3603,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アグネスタキオン",
+    "clan": 3
   },
   {
     "leader_skin_id": 3604,
-    "is_owned": true
+    "is_owned": true,
+    "name": "スペシャルウィーク",
+    "clan": 4
   },
   {
     "leader_skin_id": 3605,
-    "is_owned": true
+    "is_owned": true,
+    "name": "マンハッタンカフェ",
+    "clan": 5
   },
   {
     "leader_skin_id": 3606,
-    "is_owned": true
+    "is_owned": true,
+    "name": "マルゼンスキー",
+    "clan": 6
   },
   {
     "leader_skin_id": 3607,
-    "is_owned": true
+    "is_owned": true,
+    "name": "メジロマックイーン",
+    "clan": 7
   },
   {
     "leader_skin_id": 3608,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ミホノブルボン",
+    "clan": 8
   },
   {
     "leader_skin_id": 3617,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ゴールドシップ",
+    "clan": 7
   },
   {
     "leader_skin_id": 3701,
-    "is_owned": true
+    "is_owned": true,
+    "name": "イツキ",
+    "clan": 1
   },
   {
     "leader_skin_id": 3702,
-    "is_owned": true
+    "is_owned": true,
+    "name": "レン",
+    "clan": 2
   },
   {
     "leader_skin_id": 3703,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シオン",
+    "clan": 3
   },
   {
     "leader_skin_id": 3704,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ライト",
+    "clan": 4
   },
   {
     "leader_skin_id": 3705,
-    "is_owned": true
+    "is_owned": true,
+    "name": "スバル",
+    "clan": 5
   },
   {
     "leader_skin_id": 3706,
-    "is_owned": true
+    "is_owned": true,
+    "name": "リョウガ",
+    "clan": 6
   },
   {
     "leader_skin_id": 3707,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ツバサ",
+    "clan": 7
   },
   {
     "leader_skin_id": 3801,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ちいかわ",
+    "clan": 1
   },
   {
     "leader_skin_id": 3803,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ハチワレ",
+    "clan": 3
   },
   {
     "leader_skin_id": 3808,
-    "is_owned": true
+    "is_owned": true,
+    "name": "うさぎ",
+    "clan": 8
   },
   {
     "leader_skin_id": 3901,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ピアシィ上位",
+    "clan": 1
   },
   {
     "leader_skin_id": 3902,
-    "is_owned": true
+    "is_owned": true,
+    "name": "タクティカルドッグ",
+    "clan": 2
   },
   {
     "leader_skin_id": 3903,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エレノア上位",
+    "clan": 3
   },
   {
     "leader_skin_id": 3904,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ロマロニア上位",
+    "clan": 4
   },
   {
     "leader_skin_id": 3905,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ケルヌンノス上位",
+    "clan": 5
   },
   {
     "leader_skin_id": 3906,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カティア上位",
+    "clan": 6
   },
   {
     "leader_skin_id": 3907,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ウィルバート",
+    "clan": 7
   },
   {
     "leader_skin_id": 3908,
-    "is_owned": true
+    "is_owned": true,
+    "name": "メイシア",
+    "clan": 8
   },
   {
     "leader_skin_id": 3911,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ホズミ",
+    "clan": 1
   },
   {
     "leader_skin_id": 3912,
-    "is_owned": true
+    "is_owned": true,
+    "name": "マーズ上位",
+    "clan": 2
   },
   {
     "leader_skin_id": 3917,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ホーリーセイバー上位",
+    "clan": 7
   },
   {
     "leader_skin_id": 3918,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シオン上位",
+    "clan": 8
   },
   {
     "leader_skin_id": 4002,
-    "is_owned": true
+    "is_owned": true,
+    "name": "晴れ着オーレリア上位",
+    "clan": 2
   },
   {
     "leader_skin_id": 4004,
-    "is_owned": true
+    "is_owned": true,
+    "name": "晴れ着伊達政宗",
+    "clan": 4
   },
   {
     "leader_skin_id": 4101,
-    "is_owned": true
+    "is_owned": true,
+    "name": "カステル",
+    "clan": 1
   },
   {
     "leader_skin_id": 4102,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ヴァイス",
+    "clan": 2
   },
   {
     "leader_skin_id": 4103,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アマリリス",
+    "clan": 3
   },
   {
     "leader_skin_id": 4104,
-    "is_owned": true
+    "is_owned": true,
+    "name": "リリウム",
+    "clan": 4
   },
   {
     "leader_skin_id": 4105,
-    "is_owned": true
+    "is_owned": true,
+    "name": "コルネリウス",
+    "clan": 5
   },
   {
     "leader_skin_id": 4107,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ベルディリア",
+    "clan": 7
   },
   {
     "leader_skin_id": 4108,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ライル",
+    "clan": 8
   },
   {
     "leader_skin_id": 4201,
-    "is_owned": true
+    "is_owned": true,
+    "name": "初音ミク上位",
+    "clan": 1
   },
   {
     "leader_skin_id": 4202,
-    "is_owned": true
+    "is_owned": true,
+    "name": "鏡音レン",
+    "clan": 2
   },
   {
     "leader_skin_id": 4206,
-    "is_owned": true
+    "is_owned": true,
+    "name": "巡音ルカ",
+    "clan": 6
   },
   {
     "leader_skin_id": 4207,
-    "is_owned": true
+    "is_owned": true,
+    "name": "鏡音リン",
+    "clan": 7
   },
   {
     "leader_skin_id": 4302,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ポムポムプリン",
+    "clan": 2
   },
   {
     "leader_skin_id": 4303,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シナモロール",
+    "clan": 3
   },
   {
     "leader_skin_id": 4304,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ハローキティ",
+    "clan": 4
   },
   {
     "leader_skin_id": 4305,
-    "is_owned": true
+    "is_owned": true,
+    "name": "クロミ",
+    "clan": 5
   },
   {
     "leader_skin_id": 4401,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ボンド・フォージャー",
+    "clan": 1
   },
   {
     "leader_skin_id": 4402,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ロイド・フォージャー",
+    "clan": 2
   },
   {
     "leader_skin_id": 4403,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アーニャ・フォージャー",
+    "clan": 3
   },
   {
     "leader_skin_id": 4406,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ヨル・フォージャー",
+    "clan": 6
   },
   {
     "leader_skin_id": 4413,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アーニャ・フォージャー上位",
+    "clan": 3
   },
   {
     "leader_skin_id": 4502,
-    "is_owned": true
+    "is_owned": true,
+    "name": "クラトス",
+    "clan": 2
   },
   {
     "leader_skin_id": 4503,
-    "is_owned": true
+    "is_owned": true,
+    "name": "サンタテレサ",
+    "clan": 3
   },
   {
     "leader_skin_id": 4504,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ドラグラム",
+    "clan": 4
   },
   {
     "leader_skin_id": 4508,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エレナ",
+    "clan": 8
   },
   {
     "leader_skin_id": 4518,
-    "is_owned": true
+    "is_owned": true,
+    "name": "アシュレイ",
+    "clan": 8
   },
   {
     "leader_skin_id": 4528,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ネルヴァ",
+    "clan": 8
   },
   {
     "leader_skin_id": 4601,
-    "is_owned": true
+    "is_owned": true,
+    "name": "マガチヨ上位",
+    "clan": 1
   },
   {
     "leader_skin_id": 4602,
-    "is_owned": true
+    "is_owned": true,
+    "name": "バルバロス上位",
+    "clan": 2
   },
   {
     "leader_skin_id": 4603,
-    "is_owned": true
+    "is_owned": true,
+    "name": "セフィー上位",
+    "clan": 3
   },
   {
     "leader_skin_id": 4604,
-    "is_owned": true
+    "is_owned": true,
+    "name": "リュミオール上位",
+    "clan": 4
   },
   {
     "leader_skin_id": 4605,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ケリドウェン",
+    "clan": 5
   },
   {
     "leader_skin_id": 4606,
-    "is_owned": true
+    "is_owned": true,
+    "name": "シグナ上位",
+    "clan": 6
   },
   {
     "leader_skin_id": 4607,
-    "is_owned": true
+    "is_owned": true,
+    "name": "エルヴィーラ上位",
+    "clan": 7
   },
   {
     "leader_skin_id": 4608,
-    "is_owned": true
+    "is_owned": true,
+    "name": "キルザエル上位",
+    "clan": 8
   },
   {
     "leader_skin_id": 4615,
-    "is_owned": true
+    "is_owned": true,
+    "name": "デッドソウルテイカー上位",
+    "clan": 5
   },
   {
     "leader_skin_id": 500405,
-    "is_owned": true
+    "is_owned": true,
+    "name": "ツキカゲ",
+    "clan": 5
   }
 ]

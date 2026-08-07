@@ -1,0 +1,28 @@
+{
+  "skilldesctext": {
+    "Jpn": {
+      "SD_900000001_01": "[u][ffcd45]呼応の使い魔[-][/u]を1体出す。[u][ffcd45]秘伝の力[-][/u]を得る。",
+      "SD_900000001_02": "進化後の試験効果。",
+      "SD_900000002_01": "[u][ffcd45]試験の戦士[-][/u]と共鳴する。",
+      "SD_900000002_02": "進化後の呼応効果。",
+      "SD_900000003": "特に効果は無い。",
+      "SD_900000004_01": "自分の場にカードを1枚出す。",
+      "SD_900000004_02": "進化前と同じ能力。",
+      "SD_900000005_01": "[u][ffcd45]ファンファーレ[-][/u] カードを1枚引く。",
+      "SD_900000005_02": "進化前と同じ能力。（[u][ffcd45]ファンファーレ[-][/u] 能力を除く）",
+      "SD_900000006_01": "自分の場にトークンを1体出す。",
+      "SD_900000006_02": "進化前と同じ能力。\n\n[c8c8b0ff]※このカードは「テストの再臨」として扱う。[-]"
+    },
+    "Eng": {
+      "SD_900000001_01": "Summon a [u][ffcd45]Echo Familiar[-][/u]. Gain [u][ffcd45]Secret Power[-][/u].",
+      "SD_900000001_02": "Evolved test effect.",
+      "SD_900000002_01": "Resonate with [u][ffcd45]Test Warrior[-][/u].",
+      "SD_900000002_02": "Evolved echo effect.",
+      "SD_900000003": "No notable effect.",
+      "SD_900000004_01": "Put a card into play.",
+      "SD_900000004_02": "(Same as the unevolved form.)",
+      "SD_900000005_01": "[u][ffcd45]Fanfare[-][/u] Draw a card.",
+      "SD_900000005_02": "(Same as the unevolved form, excluding [b]Fanfare[/b].)"
+    }
+  }
+}
