@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 
 namespace OpenVerse.Engine;
 
-// one headless copy of the client's engine. the engine hangs the current battle off process-wide statics, so each
+// One headless copy of the client's engine. The engine hangs the current battle off process-wide statics, so each
 // mirror owns its load context and its own worker thread, and two of them are two genuinely separate boards.
 // net48, reached by reflection (EngineHost is not referenceable from net10)
 public sealed class ShadowMirror : IDisposable
@@ -13,7 +13,7 @@ public sealed class ShadowMirror : IDisposable
 
     // 250ms was enough for the second question and not for the first: the engine's first call in a fresh context JITs
     // its way through the receive path, and on a busy machine that overran, so the relay silently priced the card off
-    // its printed cost. the client waits 95s before giving up on a battle, so this is cheap
+    // its printed cost. The client waits 95s before giving up on a battle, so this is cheap
     public const int AnswerBudgetMs = 5_000;
 
     public string Name { get; }
@@ -24,7 +24,7 @@ public sealed class ShadowMirror : IDisposable
     Type? _host;
     MethodInfo? _boot, _create, _ingest, _verdict, _state, _close, _costOf, _cardIdOf, _answerConditions, _setDeckMirror;
     MethodInfo? _project, _cursor, _lastVerdict, _playByIntent;
-    // unbounded: a dropped job is a hole in the board, and the board is what every later answer is read off. the old
+    // unbounded: a dropped job is a hole in the board, and the board is what every later answer is read off. The old
     // 256-slot cap turned a slow boot or a busy machine into a silently wrong cost
     readonly BlockingCollection<Action> _work = new();
     Thread? _worker;
@@ -106,7 +106,7 @@ public sealed class ShadowMirror : IDisposable
         return false;
     }
 
-    // tests and shutdown only; the relay never blocks on the worker
+    // Tests and shutdown only. The relay never blocks on the worker
     public bool WaitIdle(int timeoutMs = 120_000)
     {
         var until = Environment.TickCount64 + timeoutMs;
@@ -143,16 +143,16 @@ public sealed class ShadowMirror : IDisposable
         });
     }
 
-    // the relay adds these for the real peer's placeholder model; a mirror re-simulates from full information and needs
-    // none. knownList walks ReplaceReceivedCard.CreateActualCard, which NREs headless (no card view)
-    static readonly string[] PeerOnlyFields = ["knownList"];
+    // knownList NREs headless through CreateActualCard, but dropping it loses every token's only statement of identity,
+    // so it travels under a key the client never reads and ShadowMatch materializes from it
+    public const string ShadowKnown = "shadowKnown";
 
     public void Observe(string uri, JsonObject body, bool isPlayer, Action<string> log)
     {
         if (!Ready) return;
         // copied on the relay thread: it will not keep the node alive for the worker
         var flat = Flatten(body);
-        foreach (var f in PeerOnlyFields) flat.Remove(f);
+        if (flat.Remove("knownList", out var known)) flat[ShadowKnown] = known;
         // a cardId on a uList entry takes the same CreateActualCard path knownList did, so drop it to the CardId==0
         // branch (the entry itself stays, since it drives random resolution)
         if (flat.TryGetValue("uList", out var ul) && ul is List<object?> entries)
@@ -166,7 +166,7 @@ public sealed class ShadowMirror : IDisposable
         });
     }
 
-    // this board's own play, driven the way its client drove it. false means it could not be, and the caller should
+    // this board's own play, driven the way its client drove it. False means it could not be, and the caller should
     // fall back to the receive path rather than leave the board without the play
     public bool TryPlayByIntent(int idx, List<object> targets, List<object> choices, out string why,
                                 int timeoutMs = AnswerBudgetMs)
@@ -209,7 +209,7 @@ public sealed class ShadowMirror : IDisposable
         Ask(_cardIdOf, [_handle, isSelfPlayer, idx], o => (int)o!, out cardId, 0, timeoutMs,
             "falling back to a value the engine did not supply") && cardId != 0;
 
-    // answers the actor's skill-condition queries as ready-made knownList entries; a spec it cannot evaluate has no row
+    // answers the actor's skill-condition queries as ready-made knownList entries. A spec it cannot evaluate has no row
     public bool TryConditionAnswers(bool isSelfPlayer, int cardIdx, JsonArray specs, out JsonArray entries,
                                     int timeoutMs = AnswerBudgetMs)
     {
@@ -240,7 +240,7 @@ public sealed class ShadowMirror : IDisposable
         return true;
     }
 
-    // what a stock client would have decided about the last message this board took. the same check that writes
+    // what a stock client would have decided about the last message this board took. The same check that writes
     // ConductError on a real client, asked before the message goes out instead of read out of a log afterwards
     public bool TryLastVerdict(out string verdict, out bool passed, int timeoutMs = AnswerBudgetMs)
     {
@@ -251,7 +251,7 @@ public sealed class ShadowMirror : IDisposable
         return ok && verdict.Length > 0;
     }
 
-    // the shared StableRandom cursor, or -1. a receiver's spin is the actor's delta minus its own
+    // The shared StableRandom cursor, or -1. A receiver's spin is the actor's delta minus its own
     public bool TryRandomCursor(out int cursor, int timeoutMs = AnswerBudgetMs) =>
         Ask(_cursor, [_handle], o => (int)o!, out cursor, -1, timeoutMs, "cursor unread") && cursor >= 0;
 
