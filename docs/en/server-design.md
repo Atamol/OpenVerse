@@ -46,7 +46,11 @@ Point `utoongaize.shadowverse.jp` at the server via hosts on each machine. Whoev
 
 ## Battle engine
 
-The PvP relay passes a client's messages straight to the peer, but the values the original server used to fill in (costs, condition answers) go missing. So the client's own battle engine runs headless alongside the match, replays the same game, and observes those missing values. It only observes for now. Switching it to adjudication is gated behind the `OPENVERSE_ENGINE_ROLE` env var and enabled in stages.
+The PvP relay passes a client's messages straight to the peer, but the values the original server used to fill in (costs, condition answers, `spin`) go missing. So the client's own battle engine runs headless alongside the match, replays the same game, and reads those values off its own board.
+
+There are two engines per room. A client re-simulates what it receives rather than displaying it, so without a model of each client's view separately there is no way to compute `spin` or to run the receive check.
+
+`OPENVERSE_ENGINE_ROLE` raises how far the engine is trusted, in stages (`Observe` → `AdviseCost` → `AnswerBlanks` → `DecideResult`). It ships on `AdviseCost`, and `DecideResult` is not implemented. [desync.md](desync.md) has the investigation and the limits that remain.
 
 ## Distribution
 
