@@ -121,9 +121,9 @@ $zip = Join-Path $PSScriptRoot "OpenVerse.zip"
 Remove-Item -Force $zip -ErrorAction SilentlyContinue
 
 $front = @("openverse-setup.exe", "openverse-launcher.exe")
-$exes = $front + @("OpenVerse.Api.exe", "OpenVerse.Battle.exe")
+$serverExes = @("OpenVerse.Api.exe", "OpenVerse.Battle.exe", "openverse-decker.exe")
 foreach ($e in $front) { if (-not (Test-Path (Join-Path $rel $e))) { throw "missing from publish: $e" } }
-foreach ($e in @("OpenVerse.Api.exe", "OpenVerse.Battle.exe")) {
+foreach ($e in $serverExes) {
   if (-not (Test-Path (Join-Path $srv $e))) { throw "missing from publish: server/$e" }
 }
 $deny = @("Assembly-CSharp.dll", "Assembly-CSharp-firstpass.dll", "OpenVerse.EngineHost.dll", "card_master_full.csv.gz")
