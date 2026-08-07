@@ -6,7 +6,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
-// naming by DESTINATION was the wrong axis. a fusion consumes its ingredients into FusionIngredient(60), emits no
+// naming by DESTINATION was the wrong axis. A fusion consumes its ingredients into FusionIngredient(60), emits no
 // `move` record at all, and the destination pass cannot see it. left unnamed, the peer resolves the index against its
 // own placeholders, IsFusionable finds nothing matching {tribe=lord} against a TribeType.ALL filler, the fusion
 // no-ops on one machine, and every later condition reading fusion_ingrediented_card_list is false there
@@ -119,7 +119,7 @@ public class FusionRevealTests
     public void TheFillerIsNeverStated()
     {
         var r = NewRig();
-        r.Ledger[1] = 100111010;
+        r.Ledger[1] = OpenVerse.Engine.MirrorPair.Dummy;
         var list = r.Reveal(Fusion)!;
 
         Assert.Single(list);

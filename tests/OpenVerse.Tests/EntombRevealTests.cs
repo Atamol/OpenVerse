@@ -6,7 +6,7 @@ using OpenVerse.Common;
 
 namespace OpenVerse.Tests;
 
-// knownList is a list and the peer looks entries up by index, but the relay only ever put the played card in it. a play
+// knownList is a list and the peer looks entries up by index, but the relay only ever put the played card in it. A play
 // that also moves ANOTHER card somewhere public left that card unnamed, so the peer resolved it against its own forty
 // dummies and drew a Goblin. 葬送 entombing a follower chosen from hand is the case that surfaced it
 [Collection("Sqlite")]
@@ -83,7 +83,7 @@ public class EntombRevealTests
         Assert.Equal(1, list[1]!["is_open"]!.GetValue<int>());
     }
 
-    // the played card is already in the list; naming it twice would put one index in two entries
+    // The played card is already in the list. naming it twice would put one index in two entries
     [Fact]
     public void ThePlayedCardIsNotListedTwice()
     {
@@ -129,14 +129,14 @@ public class EntombRevealTests
         Assert.Equal(24, list[0]!["idx"]!.GetValue<int>());
     }
 
-    // a deck the relay never resolved is padded with the filler, which is the very card the peer would have drawn
+    // A deck the relay never resolved is padded with the filler, which is the very card the peer would have drawn
     // anyway. stating it turns "I do not know" into "it is a Goblin"
     [Fact]
     public void TheFillerIsNeverStatedAsAnIdentity()
     {
         var r = NewRig();
         r.Ledger[24] = 124334010;
-        r.Ledger[14] = 100111010;
+        r.Ledger[14] = OpenVerse.Engine.MirrorPair.Dummy;
         var list = r.Reveal(Entomb)!;
 
         Assert.Single(list);

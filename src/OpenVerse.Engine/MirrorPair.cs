@@ -2,13 +2,14 @@ using System.Text.Json.Nodes;
 
 namespace OpenVerse.Engine;
 
-// Two engines per battle, one per client's viewpoint. One cannot do it: _stableRandomOnlySelf is per client, a
+// two engines per battle, one per client's viewpoint. One cannot do it: _stableRandomOnlySelf is per client, a
 // receiver's spin needs that receiver's own draw count, and OperateReceiveChecker hardcodes BattleEnemy.
 // GetSpinCount returning {vid, value} is the original server saying the same thing
 public sealed class MirrorPair : IDisposable
 {
-    // what the client fabricates for an opponent deck it was never told
-    public const int Dummy = 100111010;
+    // NetworkUserInfoData.DUMMY_CARD_ID, what the client fabricates for an opponent deck it was never told. it has to
+    // be this exact id: the old 100111010 is Water Fairy, whose Last Word fired in the shadow and never on the client
+    public const int Dummy = 100011010;
     public const int DeckSize = 40;
 
     public ShadowMirror A { get; }
@@ -33,18 +34,18 @@ public sealed class MirrorPair : IDisposable
 
     public void Begin(int seed, bool aFirst, int[] aDeck, int[] bDeck, int[] aHand, int[] bHand, Action<string> log)
     {
-        // Each side faces dummies, which is the board its client actually has. playerFirst is viewpoint-relative
+        // each side faces dummies, which is the board its client actually has. playerFirst is viewpoint-relative
         A.Begin(seed, aFirst, aDeck, Dummies(), aHand, bHand, log);
         B.Begin(seed, !aFirst, bDeck, Dummies(), bHand, aHand, log);
     }
 
-    // Opt-in until this is measured: a board that drives its own play differently is a new way to be wrong
+    // opt-in until this is measured: a board that drives its own play differently is a new way to be wrong
     public static bool IntentDriven =>
         Environment.GetEnvironmentVariable("OPENVERSE_ENGINE_INTENT")?.Trim().ToLowerInvariant() is "1" or "true" or "on";
 
     public void Observe(string uri, JsonObject body, bool fromA, Action<string> log)
     {
-        // The same message is self to one board and peer to the other. Inverting it is what must never be got wrong
+        // The same message is self to one board and peer to the other. inverting it is what must never be got wrong
         var actor = Actor(fromA);
         if (!IntentDriven || !DroveOwnPlay(actor, uri, body, log))
             actor.Observe(uri, body, isPlayer: true, log);
@@ -70,7 +71,7 @@ public sealed class MirrorPair : IDisposable
     public ShadowMirror Actor(bool fromA) => fromA ? A : B;
     public ShadowMirror Receiver(bool fromA) => fromA ? B : A;
 
-    // The same check that writes ConductError on a real client. Reporting only: the actor has already committed
+    // The same check that writes ConductError on a real client. reporting only: the actor has already committed
     // locally, so withholding the message would leave it with the card on board and the peer without it forever
     public bool PeerRefusedLast(bool fromA, out string verdict)
     {
@@ -78,7 +79,7 @@ public sealed class MirrorPair : IDisposable
         return Ready && Receiver(fromA).TryLastVerdict(out verdict, out var passed) && !passed;
     }
 
-    // Spin is forward-only, so a negative delta cannot be expressed and is refused rather than sent
+    // spin is forward-only, so a negative delta cannot be expressed and is refused rather than sent
     public bool TrySpin(bool fromA, out int spin)
     {
         spin = 0;
