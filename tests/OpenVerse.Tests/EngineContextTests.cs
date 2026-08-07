@@ -1,30 +1,19 @@
-using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.Loader;
 using OpenVerse.Engine;
 
 namespace OpenVerse.Tests;
 
-// the gate for the mirror pair. two instances that silently share one engine still print two plausible boards, because
+// The gate for the mirror pair. two instances that silently share one engine still print two plausible boards, because
 // ShadowBattle.Mgr is an instance reference while only the static BattleManagerBase.main gets stolen, so nothing about
-// board output can catch it. assert on identity instead
+// board output can catch it. Assert on identity instead
 [Collection("Engine")]
 public class EngineContextTests
 {
     const BindingFlags PubS = BindingFlags.Public | BindingFlags.Static;
     const BindingFlags NonPubS = BindingFlags.NonPublic | BindingFlags.Static;
 
-    static string? Csv()
-    {
-        var gz = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data", "card_master_full.csv.gz");
-        if (!File.Exists(gz)) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "OpenVerse.EngineHost.dll"))) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assembly-CSharp.dll"))) return null;
-        using var fs = File.OpenRead(gz);
-        using var z = new GZipStream(fs, CompressionMode.Decompress);
-        using var sr = new StreamReader(z);
-        return sr.ReadToEnd();
-    }
+    static string? Csv() => Fixtures.CardMasterCsv();
 
     static int[] Deck() =>
         Enumerable.Range(0, 40).Select(i => new[] { 100011010, 900011080, 100011020, 100011030 }[i % 4]).ToArray();
@@ -56,7 +45,7 @@ public class EngineContextTests
         Assert.Same(alcA, AssemblyLoadContext.GetLoadContext(csA));
         Assert.NotSame(AssemblyLoadContext.Default, AssemblyLoadContext.GetLoadContext(csA));
 
-        // distinct Types mean distinct static storage. AssemblyQualifiedName is identical in both, so identity is the
+        // Distinct Types mean distinct static storage. AssemblyQualifiedName is identical in both, so identity is the
         // only discriminator that works here
         var bmbA = csA.GetType("BattleManagerBase")!;
         var bmbB = csB.GetType("BattleManagerBase")!;
@@ -86,7 +75,7 @@ public class EngineContextTests
     }
 
     // measured: a null-returning override and one throwing FileNotFoundException both let the binder fall through to a
-    // Default-context copy, with no exception and no log. the refusal has to be a shape the binder does not retry past
+    // Default-context copy, with no exception and no log. The refusal has to be a shape the binder does not retry past
     [Fact]
     public void TheResolverRefusesRatherThanFallingBackToDefault()
     {

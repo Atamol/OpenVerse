@@ -5,11 +5,7 @@ namespace OpenVerse.Tests;
 public class BaseCardIdMapTests
 {
     // the real master isn't shipped (each host extracts it), so skip rather than fail when it's absent
-    static string? DataDir()
-    {
-        var d = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data");
-        return File.Exists(Path.Combine(d, "card_master_full.csv.gz")) ? d : null;
-    }
+    static string? DataDir() => Fixtures.DataDir();
 
     [Fact]
     public void MissingMasterYieldsEmptyMap()

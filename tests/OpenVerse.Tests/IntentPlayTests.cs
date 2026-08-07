@@ -1,25 +1,14 @@
-using System.IO.Compression;
 using System.Text.Json.Nodes;
 using OpenVerse.Engine;
 
 namespace OpenVerse.Tests;
 
-// a client never receives its own action, it ran it through OperateMgr. driving the actor's board the same way is what
+// A client never receives its own action, it ran it through OperateMgr. driving the actor's board the same way is what
 // makes it a copy of that client rather than a spectator of it, and the two paths do not touch StableRandom alike
 [Collection("Engine")]
 public class IntentPlayTests
 {
-    static string? Csv()
-    {
-        var gz = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data", "card_master_full.csv.gz");
-        if (!File.Exists(gz)) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "OpenVerse.EngineHost.dll"))) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assembly-CSharp.dll"))) return null;
-        using var fs = File.OpenRead(gz);
-        using var z = new GZipStream(fs, CompressionMode.Decompress);
-        using var sr = new StreamReader(z);
-        return sr.ReadToEnd();
-    }
+    static string? Csv() => Fixtures.CardMasterCsv();
 
     // a 1pp 1/1 with no targeting, so a failure is the seam and not the card
     const int Plain = 100011010;

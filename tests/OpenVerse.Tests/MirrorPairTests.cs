@@ -1,25 +1,14 @@
-using System.IO.Compression;
 using System.Text.Json.Nodes;
 using OpenVerse.Engine;
 
 namespace OpenVerse.Tests;
 
-// two boards, one per client's viewpoint. the tests that matter are the ones a shared pair would fail: each mirror has
+// two boards, one per client's viewpoint. The tests that matter are the ones a shared pair would fail: each mirror has
 // to hold its OWN deck against dummies, and the same message has to be self to one and peer to the other
 [Collection("Engine")]
 public class MirrorPairTests
 {
-    static string? Csv()
-    {
-        var gz = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data", "card_master_full.csv.gz");
-        if (!File.Exists(gz)) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "OpenVerse.EngineHost.dll"))) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assembly-CSharp.dll"))) return null;
-        using var fs = File.OpenRead(gz);
-        using var z = new GZipStream(fs, CompressionMode.Decompress);
-        using var sr = new StreamReader(z);
-        return sr.ReadToEnd();
-    }
+    static string? Csv() => Fixtures.CardMasterCsv();
 
     // two decks with no card in common, so "which board is this" is answerable from any card id
     static int[] DeckA() => Enumerable.Repeat(101334020, 40).ToArray();
@@ -92,7 +81,7 @@ public class MirrorPairTests
         Assert.Same(p.A, p.Receiver(fromA: false));
     }
 
-    // the number the relay has never sent. equal cursors on an untouched pair is the only value that can be right here
+    // The number the relay has never sent. Equal cursors on an untouched pair is the only value that can be right here
     [Fact]
     public void SpinIsZeroWhileTheCursorsAgree()
     {

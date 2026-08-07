@@ -1,32 +1,21 @@
-using System.IO.Compression;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using OpenVerse.Engine;
 
 namespace OpenVerse.Tests;
 
-// a room plays many battles in one server process, and everything the shadow keeps between them is a battle answered
+// A room plays many battles in one server process, and everything the shadow keeps between them is a battle answered
 // off the previous one's board. these skip when the engine is absent, like the rest of the Engine collection
 [Collection("Engine")]
 public class ShadowLifetimeTests
 {
-    static string? Csv()
-    {
-        var gz = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data", "card_master_full.csv.gz");
-        if (!File.Exists(gz)) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "OpenVerse.EngineHost.dll"))) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assembly-CSharp.dll"))) return null;
-        using var fs = File.OpenRead(gz);
-        using var z = new GZipStream(fs, CompressionMode.Decompress);
-        using var sr = new StreamReader(z);
-        return sr.ReadToEnd();
-    }
+    static string? Csv() => Fixtures.CardMasterCsv();
 
     static int[] Deck() =>
         Enumerable.Range(0, 40).Select(i => new[] { 100011010, 900011080, 100011020, 100011030 }[i % 4]).ToArray();
 
-    // the host now lives in its own load context, so loading it again by path would hand back a different copy with its
-    // own statics. go through the one the bridge actually uses. the host's helpers sit in the global namespace
+    // The host now lives in its own load context, so loading it again by path would hand back a different copy with its
+    // own statics. go through the one the bridge actually uses. The host's helpers sit in the global namespace
     static Type Reconciler()
     {
         var host = (Type?)typeof(ShadowMirror).GetField("_host", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(ShadowBridge.Primary)
@@ -45,7 +34,7 @@ public class ShadowLifetimeTests
             JsonNode.Parse("""{"type":30,"playIdx":1,"isSelf":1,"orderList":[{"move":{"idx":[1],"isSelf":1,"from":10,"to":30}}]}""")!.AsObject(),
             isPlayer, _ => { });
 
-    // the census of wire-named indices used to survive Close, so from battle 2 on the reconciler refused evictions the
+    // The census of wire-named indices used to survive Close, so from battle 2 on the reconciler refused evictions the
     // new battle needed. six games in a row is a normal evening
     [Fact]
     public void TheIndexCensusDoesNotSurviveIntoTheNextBattle()
