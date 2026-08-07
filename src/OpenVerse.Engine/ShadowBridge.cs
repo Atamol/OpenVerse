@@ -4,8 +4,7 @@ namespace OpenVerse.Engine;
 
 public static class ShadowBridge
 {
-    // how far the engine is trusted. everything above Observe is opt-in via OPENVERSE_ENGINE_ROLE because it changes
-    // what players see; Observe reaches no client
+    // everything above Observe is opt-in because it changes what players see
     public enum EngineRole { Off, Observe, AdviseCost, AnswerBlanks, DecideResult }
 
     public static EngineRole Role { get; private set; } = EngineRole.Observe;
@@ -17,7 +16,7 @@ public static class ShadowBridge
     static int PairCap =>
         int.TryParse(Environment.GetEnvironmentVariable("OPENVERSE_ENGINE_PAIRS"), out var n) && n > 0 ? n : 2;
 
-    // the A board. before Init, a mirror that is not Ready, so every call declines instead of throwing
+    // before Init this is a mirror that is not Ready, so every call declines instead of throwing
     public static ShadowMirror Primary => Pair?.A ?? (_solo ??= new ShadowMirror("engine-0"));
 
     public static bool Ready => Primary.Ready;
@@ -36,7 +35,9 @@ public static class ShadowBridge
         return p.Ready;
     }
 
-    public static MirrorPair? For(string battleId) => Pool?.Rent(battleId) ?? Pair;
+    // A refusal from the pool means no engine for that room, not fall back to the shared one. `?? Pair` read it the
+    // other way and put every room past the cap on one board
+    public static MirrorPair? For(string battleId) => Pool is { } pool ? pool.Rent(battleId) : Pair;
 
     public static void Release(string battleId) => Pool?.Release(battleId);
 
@@ -68,8 +69,7 @@ public static class ShadowBridge
                                            int timeoutMs = ShadowMirror.AnswerBudgetMs) =>
         Actor(isSelfPlayer).TryConditionAnswers(isSelfPlayer: true, cardIdx, specs, out entries, timeoutMs);
 
-    // a question about a side is answered by the board that OWNS that side, where the card is a real card rather than
-    // one of the forty dummies. with one board the caller had to say which half to look in; with two it says whose
+    // A side is answered by the board that owns it, where the card is real rather than one of the forty dummies
     static ShadowMirror Actor(bool isSelfPlayer) => Pair?.Actor(isSelfPlayer) ?? Primary;
 
     public static void CompareCost(bool isSelfPlayer, int idx, int? relayCost, Action<string> log) =>
@@ -81,7 +81,7 @@ public static class ShadowBridge
         return Pair is { } p && p.TryProject(isSelfPlayer, idx, out entry);
     }
 
-    // the receiver's cursor repair: the actor's draws minus that receiver's. only a pair can compute it
+    // The actor's draws minus that receiver's, which only a pair can compute
     public static bool TrySpin(bool isSelfPlayer, out int spin)
     {
         spin = 0;

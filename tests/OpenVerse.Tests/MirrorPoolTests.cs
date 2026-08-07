@@ -1,24 +1,13 @@
-using System.IO.Compression;
 using OpenVerse.Engine;
 
 namespace OpenVerse.Tests;
 
-// a pair holds one battle at a time, so two rooms playing at once need two. before the pool they shared one board and
+// A pair holds one battle at a time, so two rooms playing at once need two. before the pool they shared one board and
 // answered each other's questions with no sign of it
 [Collection("Engine")]
 public class MirrorPoolTests
 {
-    static string? Csv()
-    {
-        var gz = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "release", "data", "card_master_full.csv.gz");
-        if (!File.Exists(gz)) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "OpenVerse.EngineHost.dll"))) return null;
-        if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "Assembly-CSharp.dll"))) return null;
-        using var fs = File.OpenRead(gz);
-        using var z = new GZipStream(fs, CompressionMode.Decompress);
-        using var sr = new StreamReader(z);
-        return sr.ReadToEnd();
-    }
+    static string? Csv() => Fixtures.CardMasterCsv();
 
     [Fact]
     public void TwoRoomsGetTwoDifferentPairs()
@@ -55,6 +44,30 @@ public class MirrorPoolTests
 
         Assert.NotNull(pool.Rent("room-1"));
         Assert.Null(pool.Rent("room-2"));
+    }
+
+    // The relay never calls Rent, it calls For, and testing only Rent let `?? Pair` hand the shared board to every room
+    // past the cap. The cap itself is not asserted here: ShadowBridge.Init is idempotent, so whichever test reaches it
+    // first fixes the pool size for the run. what has to hold at any cap is that two rooms never share a board
+    [Fact]
+    public void TheBridgeNeverHandsTwoRoomsTheSameBoard()
+    {
+        if (Csv() is not { } csv) return;
+        Assert.True(ShadowBridge.Init(csv), ShadowBridge.Failure);
+
+        var rooms = Enumerable.Range(1, 6).Select(i => $"share-{i}").ToArray();
+        try
+        {
+            var handed = rooms.Select(ShadowBridge.For).ToArray();
+
+            Assert.Contains(handed, p => p is null);   // the cap is enforced at all
+            var live = handed.Where(p => p is not null).ToArray();
+            Assert.Equal(live.Length, live.Distinct().Count());
+        }
+        finally
+        {
+            foreach (var r in rooms) ShadowBridge.Release(r);
+        }
     }
 
     // the whole reason for pooling: a released pair comes back warm rather than costing another engine boot
