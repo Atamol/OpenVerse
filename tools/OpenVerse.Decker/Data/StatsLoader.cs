@@ -24,12 +24,16 @@ public static class CardTypeExtensions
     };
 }
 
-public sealed record CardStats(int Cost, int Power, int Life, CardType CardType, int Rarity);
+/// <summary>Clan 0 is Neutral; 1..8 are the craft classes (see InternalDeckBuilder.ValidClanIds).</summary>
+public sealed record CardStats(int Cost, int Power, int Life, CardType CardType, int Rarity, int Clan = 0);
 
 public sealed class StatsLoader
 {
-    private const int CardIdCol = 0, CharTypeCol = 6, CostCol = 10, AtkCol = 11, LifeCol = 12,
-        EvoAtkCol = 13, EvoLifeCol = 14, RarityCol = 16;
+    private const int CardIdCol = 0, CharTypeCol = 6, ClanCol = 7, TribeNameCol = 9, CostCol = 10,
+        AtkCol = 11, LifeCol = 12, EvoAtkCol = 13, EvoLifeCol = 14, RarityCol = 16;
+
+    // card_master marks "no tribe" with this token rather than leaving the column empty.
+    private const string NoTribeToken = "TN_ALL";
 
     // card id -> unevolved-state stats
     public IReadOnlyDictionary<int, CardStats> Id2UnevolvedStats { get; }
@@ -40,16 +44,32 @@ public sealed class StatsLoader
     // card id to card type
     public IReadOnlyDictionary<int, CardType> Id2CardType { get; }
 
+    /// <summary>
+    /// card id to its tribe tokens, already stripped of the "TN_" prefix. A card can carry several
+    /// (card_master stores them comma-separated) and most carry none.
+    /// </summary>
+    public IReadOnlyDictionary<int, IReadOnlyList<string>> Id2Tribes { get; }
+
+    /// <summary>every tribe token appearing in card_master, ordered by how many cards use it.</summary>
+    public IReadOnlyList<string> AllTribes { get; }
+
     // default card display order with these priorities : cost -> type -> rarity -> card id.
     public IReadOnlyList<int> NormalOrder { get; }
 
     public StatsLoader(string cardMasterCsvGzPath, IEnumerable<int> cardIds)
     {
-        var (unevolved, evolved, types) = ParseCardMaster(cardMasterCsvGzPath);
+        var (unevolved, evolved, types, tribes) = ParseCardMaster(cardMasterCsvGzPath);
 
         Id2UnevolvedStats = unevolved;
         Id2EvolvedStats = evolved;
         Id2CardType = types;
+        Id2Tribes = tribes;
+        AllTribes = tribes.Values
+            .SelectMany(t => t)
+            .GroupBy(t => t)
+            .OrderByDescending(g => g.Count())
+            .Select(g => g.Key)
+            .ToArray();
 
         var typeOrder = new Dictionary<CardType, int>
         {
@@ -70,7 +90,8 @@ public sealed class StatsLoader
     public static IReadOnlyDictionary<int, CardStats> LoadUnevolvedStats(string cardMasterCsvGzPath) =>
         ParseCardMaster(cardMasterCsvGzPath).Unevolved;
 
-    private static (Dictionary<int, CardStats> Unevolved, Dictionary<int, CardStats> Evolved, Dictionary<int, CardType> Types)
+    private static (Dictionary<int, CardStats> Unevolved, Dictionary<int, CardStats> Evolved,
+        Dictionary<int, CardType> Types, Dictionary<int, IReadOnlyList<string>> Tribes)
         ParseCardMaster(string cardMasterCsvGzPath)
     {
         if (!File.Exists(cardMasterCsvGzPath))
@@ -81,6 +102,7 @@ public sealed class StatsLoader
         var unevolved = new Dictionary<int, CardStats>();
         var evolved = new Dictionary<int, CardStats>();
         var types = new Dictionary<int, CardType>();
+        var tribes = new Dictionary<int, IReadOnlyList<string>>();
 
         using (var fs = File.OpenRead(cardMasterCsvGzPath))
         using (var gz = new GZipStream(fs, CompressionMode.Decompress))
@@ -111,6 +133,7 @@ public sealed class StatsLoader
                 }
 
                 int.TryParse(f[RarityCol], out var rarity);
+                int.TryParse(f[ClanCol], out var clan);
 
                 int atk, life, evoAtk, evoLife;
                 if (cardType == CardType.Follower)
@@ -125,12 +148,18 @@ public sealed class StatsLoader
                     atk = life = evoAtk = evoLife = -1;
                 }
 
-                unevolved[id] = new CardStats(cost, atk, life, cardType, rarity);
-                evolved[id] = new CardStats(cost, evoAtk, evoLife, cardType, rarity);
+                tribes[id] = f[TribeNameCol]
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(t => t != NoTribeToken)
+                    .Select(t => t.StartsWith("TN_", StringComparison.Ordinal) ? t[3..] : t)
+                    .ToArray();
+
+                unevolved[id] = new CardStats(cost, atk, life, cardType, rarity, clan);
+                evolved[id] = new CardStats(cost, evoAtk, evoLife, cardType, rarity, clan);
                 types[id] = cardType;
             }
         }
 
-        return (unevolved, evolved, types);
+        return (unevolved, evolved, types, tribes);
     }
 }

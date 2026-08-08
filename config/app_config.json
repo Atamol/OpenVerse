@@ -1,0 +1,8 @@
+{
+  "card_name_text_path": "C:\\Users\\Kent2\\Desktop\\MyProgram\\OpenVerseWorkspace\\OpenVerse\\data\\master_cardnametext.json",
+  "skill_desc_text_path": "C:\\Users\\Kent2\\Desktop\\MyProgram\\OpenVerseWorkspace\\OpenVerse\\data\\master_skilldesctext.json",
+  "textlangs_path": "C:\\Users\\Kent2\\Desktop\\MyProgram\\OpenVerseWorkspace\\OpenVerse\\data\\textlangs.json",
+  "card_master_csv_path": "C:\\Users\\Kent2\\Desktop\\MyProgram\\OpenVerseWorkspace\\OpenVerse\\data\\card_master_full.csv.gz",
+  "openverse_db_path": "C:\\Users\\Kent2\\AppData\\LocalLow\\Cygames\\Shadowverse\\openverse.db",
+  "def_lang": 0
+}

@@ -46,7 +46,7 @@ public class TextLoader
     public IReadOnlyDictionary<int, string> Id2Desc { get; }
 
     /// <summary>
-    /// card id to searchable full description for a card include its hyperlinked cards and effects.<br/>
+    /// card id to searchable full description for a card include its hyperlinked cards and effects and names.<br/>
     /// used to build the search blob for decker tool's search utility.
     /// </summary>
     public IReadOnlyDictionary<int, string> Id2RawFullDesc { get; }
@@ -55,6 +55,51 @@ public class TextLoader
     /// card id to displayable description for a card used when some hyperlink in the card's own description is cliked to show additional cards or effects' info.
     /// </summary>
     public IReadOnlyDictionary<int, string> Id2AdditionalDesc { get; }
+
+    /// <summary>
+    /// card id to markup-stripped card name, computed once here because StripNotation is
+    /// regex-driven and the card list would otherwise re-run it on every filter change.
+    /// </summary>
+    public IReadOnlyDictionary<int, string> Id2DisplayName { get; }
+
+    /// <summary>
+    /// keyword abilities of this language (Fanfare, Ward, ...), most used first. Taken from the
+    /// keyword markup in the descriptions and minus anything that resolves to a card name, so it
+    /// needs no hand-written per-language table.
+    /// </summary>
+    public IReadOnlyList<string> Keywords { get; }
+
+    /// <summary>
+    /// card id to lowercased name + full description, so search can use StringComparison.Ordinal.
+    /// OrdinalIgnoreCase re-folds the whole corpus per keystroke and measured ~20x slower.
+    /// </summary>
+    public IReadOnlyDictionary<int, string> Id2SearchText { get; }
+
+    // a keyword is marked up exactly like a card reference, so the card names are what separates
+    // them; the occurrence floor then drops one-off flavour links such as "コキュートスカード".
+    private const int MinKeywordOccurrences = 5;
+
+    private static string[] ExtractKeywords(IEnumerable<string> rawDescriptions, IEnumerable<string> cardNames)
+    {
+        var names = cardNames.ToHashSet();
+        var counts = new Dictionary<string, int>();
+        foreach (var raw in rawDescriptions)
+        {
+            foreach (var target in CardTextMarkup.ExtractHyperlinkTargets(raw))
+            {
+                // length 1 drops the ":" and "s" fragments the English "[b]" markup leaves behind
+                if (target.Length > 1 && !names.Contains(target))
+                {
+                    counts[target] = counts.GetValueOrDefault(target) + 1;
+                }
+            }
+        }
+        return counts
+            .Where(pair => pair.Value >= MinKeywordOccurrences)
+            .OrderByDescending(pair => pair.Value)
+            .Select(pair => pair.Key)
+            .ToArray();
+    }
 
     // reads textlangs.json (written by OpenVerse.Setup/Program.cs) and returns the language keys
     // stored in it (e.g. ["Jpn", "Eng"]).
@@ -244,5 +289,14 @@ public class TextLoader
 
         Id2RawFullDesc = id2RawFullDesc;
         Id2AdditionalDesc = id2AdditionalDesc;
+
+        Id2DisplayName = id2Name.ToDictionary(
+            pair => pair.Key,
+            pair => CardTextMarkup.StripNotation(pair.Value));
+        Id2SearchText = id2Name.ToDictionary(
+            pair => pair.Key,
+            pair => $"{pair.Value} {id2RawFullDesc.GetValueOrDefault(pair.Key, string.Empty)}".ToLowerInvariant());
+
+        Keywords = ExtractKeywords(baseDescByCard.Values.Concat(evoDescByCard.Values), rawName2Id.Keys);
     }
 }

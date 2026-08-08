@@ -40,6 +40,7 @@
     <Compile Include="..\..\tools\OpenVerse.Decker\Data\CardTextComposer.cs" Link="Decker\CardTextComposer.cs" />
     <Compile Include="..\..\tools\OpenVerse.Decker\Data\StatsLoader.cs" Link="Decker\StatsLoader.cs" />
     <Compile Include="..\..\tools\OpenVerse.Decker\Data\CardFilterLoader.cs" Link="Decker\CardFilterLoader.cs" />
+    <Compile Include="..\..\tools\OpenVerse.Decker\Data\FilterEngine.cs" Link="Decker\FilterEngine.cs" />
   </ItemGroup>
 
   <ItemGroup>

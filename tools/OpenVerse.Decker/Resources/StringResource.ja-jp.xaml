@@ -35,12 +35,19 @@
      <!-- DeckEditScreen -->
      <sys:String x:Key="ClearFiltersButton">フィルタをクリア</sys:String>
 
-     <sys:String x:Key="Clan1">エルフ</sys:String>
-     <sys:String x:Key="Clan2">ロイヤル</sys:String>
-     <sys:String x:Key="Clan3">ウィッチ</sys:String>
-     <sys:String x:Key="Clan4">ドラゴン</sys:String>
-     <sys:String x:Key="Clan5">ネクロマンサー</sys:String>
-     <sys:String x:Key="Clan6">ヴァンパイア</sys:String>
-     <sys:String x:Key="Clan7">ビショップ</sys:String>
-     <sys:String x:Key="Clan8">ネメシス</sys:String>
+     <sys:String x:Key="Clan1">E</sys:String>
+     <sys:String x:Key="Clan2">R</sys:String>
+     <sys:String x:Key="Clan3">W</sys:String>
+     <sys:String x:Key="Clan4">D</sys:String>
+     <sys:String x:Key="Clan5">Nc</sys:String>
+     <sys:String x:Key="Clan6">V</sys:String>
+     <sys:String x:Key="Clan7">B</sys:String>
+     <sys:String x:Key="Clan8">Nm</sys:String>
+     <sys:String x:Key="Clan0">ニュートラル</sys:String>
+     <sys:String x:Key="Rarity1">ブロンズ</sys:String>
+     <sys:String x:Key="Rarity2">シルバー</sys:String>
+     <sys:String x:Key="Rarity3">ゴールド</sys:String>
+     <sys:String x:Key="Rarity4">レジェンド</sys:String>
+     <sys:String x:Key="KeywordFilterButton">キーワードフィルタ</sys:String>
+     <sys:String x:Key="TribeFilterButton">タイプフィルタ</sys:String>
 </ResourceDictionary>

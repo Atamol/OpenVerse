@@ -49,6 +49,8 @@
                     <Style TargetType="ListViewItem">
                         <Setter Property="HorizontalContentAlignment"
                                 Value="Stretch"/>
+                        <EventSetter Event="MouseLeftButtonDown"
+                                     Handler="Row_MouseLeftButtonDown"/>
                         <EventSetter Event="MouseLeftButtonUp"
                                      Handler="DeckCardRow_MouseLeftButtonUp"/>
                         <EventSetter Event="MouseRightButtonUp"
@@ -146,6 +148,14 @@
                     <!--for card classification like unlimited or resurgent-->
                     <WrapPanel x:Name="SpecialFilterPanel"
                                Margin="0,4,0,0"/>
+                    <WrapPanel x:Name="ClassFilterPanel"
+                               Margin="0,4,0,0"/>
+                    <WrapPanel x:Name="RarityFilterPanel"
+                               Margin="0,4,0,0"/>
+                    <!--keyword and tribe hold too many children for a flat row, so each collapses
+                        behind one button that opens a popup list (DeckEditScreen.xaml.cs)-->
+                    <WrapPanel x:Name="ExpandableFilterPanel"
+                               Margin="0,4,0,0"/>
                 </StackPanel>
             </DockPanel>
             <!-- ListView+GridView here too, for the same column-alignment reason as the left list -->
@@ -157,6 +167,8 @@
                     <Style TargetType="ListViewItem">
                         <Setter Property="HorizontalContentAlignment"
                                 Value="Stretch"/>
+                        <EventSetter Event="MouseLeftButtonDown"
+                                     Handler="Row_MouseLeftButtonDown"/>
                         <EventSetter Event="MouseLeftButtonUp"
                                      Handler="CandidateRow_MouseLeftButtonUp"/>
                         <EventSetter Event="MouseRightButtonUp"

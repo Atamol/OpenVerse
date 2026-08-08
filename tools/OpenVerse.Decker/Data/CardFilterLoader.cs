@@ -9,7 +9,9 @@ public sealed class CardFilterLoader
     private const string ResurgentResourceName = "OpenVerse.Decker.Resources.resurgent_cards.json";
 
     /// <summary>
-    /// every card_id whose card_set_id is not 90000 (token) in card_master_full.csv
+    /// every card_id whose card_set_id is not 90000 (token) in card_master_full.csv, minus the
+    /// resurgent ones. The two are kept disjoint so the buttons select separate pools, which also
+    /// makes the count match the client's Unlimited pool (4032 cards rather than 4221).
     /// </summary>
     public IReadOnlySet<int> UnlimitedCardIds { get; }
 
@@ -21,8 +23,12 @@ public sealed class CardFilterLoader
 
     public CardFilterLoader()
     {
-        UnlimitedCardIds = LoadIdSet(UnlimitedResourceName);
-        Resurgent = LoadIdSet(ResurgentResourceName);
+        var resurgent = LoadIdSet(ResurgentResourceName);
+        var unlimited = LoadIdSet(UnlimitedResourceName);
+        unlimited.ExceptWith(resurgent);
+
+        UnlimitedCardIds = unlimited;
+        Resurgent = resurgent;
     }
 
     private static HashSet<int> LoadIdSet(string resourceName)

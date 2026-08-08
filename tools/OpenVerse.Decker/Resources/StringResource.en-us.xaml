@@ -39,12 +39,19 @@
      <sys:String x:Key="ClearFiltersButton">Clear filters</sys:String>
 
      <!-- clan (class_id) names - see InternalDeckBuilder.ValidClanIds -->
-     <sys:String x:Key="Clan1">Forestcraft</sys:String>
-     <sys:String x:Key="Clan2">Swordcraft</sys:String>
-     <sys:String x:Key="Clan3">Runecraft</sys:String>
-     <sys:String x:Key="Clan4">Dragoncraft</sys:String>
-     <sys:String x:Key="Clan5">Shadowcraft</sys:String>
-     <sys:String x:Key="Clan6">Bloodcraft</sys:String>
-     <sys:String x:Key="Clan7">Havencraft</sys:String>
-     <sys:String x:Key="Clan8">Portalcraft</sys:String>
+     <sys:String x:Key="Clan1">Forest</sys:String>
+     <sys:String x:Key="Clan2">Sword</sys:String>
+     <sys:String x:Key="Clan3">Rune</sys:String>
+     <sys:String x:Key="Clan4">Dragon</sys:String>
+     <sys:String x:Key="Clan5">Shadow</sys:String>
+     <sys:String x:Key="Clan6">Blood</sys:String>
+     <sys:String x:Key="Clan7">Haven</sys:String>
+     <sys:String x:Key="Clan8">Portal</sys:String>
+     <sys:String x:Key="Clan0">Neutral</sys:String>
+     <sys:String x:Key="Rarity1">Bronze</sys:String>
+     <sys:String x:Key="Rarity2">Silver</sys:String>
+     <sys:String x:Key="Rarity3">Gold</sys:String>
+     <sys:String x:Key="Rarity4">Legendary</sys:String>
+     <sys:String x:Key="KeywordFilterButton">Keyword filter</sys:String>
+     <sys:String x:Key="TribeFilterButton">Trait filter</sys:String>
 </ResourceDictionary>
