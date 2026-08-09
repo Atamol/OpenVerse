@@ -185,6 +185,12 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
             _builder.Text.Keywords.Select(keyword => (FilterChild.Keyword(keyword), keyword)));
         AddExpandableGroup(I18n.Text("TribeFilterButton"),
             _builder.Stats.AllTribes.Select(tribe => (FilterChild.Tribe(tribe), tribe)));
+        // pack labels live in StringResource: the three-letter codes sit in en-us so every language
+        // shares them, and only Basic/Prize are translated. A pack newer than the resources falls
+        // back to its set id rather than a blank button.
+        AddExpandableGroup(I18n.Text("CardSetFilterButton"),
+            _builder.CardSets.Packs.Select(setId =>
+                (FilterChild.CardSet(setId), I18n.Text($"CardSet{setId}") ?? setId.ToString())));
     }
 
     /// <summary>

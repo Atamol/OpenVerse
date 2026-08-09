@@ -54,4 +54,44 @@
      <sys:String x:Key="Rarity4">Legendary</sys:String>
      <sys:String x:Key="KeywordFilterButton">Keyword filter</sys:String>
      <sys:String x:Key="TribeFilterButton">Trait filter</sys:String>
+     <sys:String x:Key="CardSetFilterButton">Card pack filter</sys:String>
+
+     <!-- card pack labels, keyed by card_set_id, taken from the client's own short names. English
+          uses a word per pack where Japanese uses a three-letter code, so the two locales carry
+          genuinely different text rather than one being a copy of the other. This file is merged
+          first, so it is also what a locale without its own pack labels falls back to. -->
+     <sys:String x:Key="CardSet10000">Basic</sys:String>
+     <sys:String x:Key="CardSet10001">Classic</sys:String>
+     <sys:String x:Key="CardSet10002">Darkness</sys:String>
+     <sys:String x:Key="CardSet10003">Bahamut</sys:String>
+     <sys:String x:Key="CardSet10004">Tempest</sys:String>
+     <sys:String x:Key="CardSet10005">Wonderland</sys:String>
+     <sys:String x:Key="CardSet10006">Starforged</sys:String>
+     <sys:String x:Key="CardSet10007">Chronogenesis</sys:String>
+     <sys:String x:Key="CardSet10008">Dawnbreak</sys:String>
+     <sys:String x:Key="CardSet10009">Brigade</sys:String>
+     <sys:String x:Key="CardSet10010">Omen</sys:String>
+     <sys:String x:Key="CardSet10011">Altersphere</sys:String>
+     <sys:String x:Key="CardSet10012">Rebellion</sys:String>
+     <sys:String x:Key="CardSet10013">Glory</sys:String>
+     <sys:String x:Key="CardSet10014">Verdant</sys:String>
+     <sys:String x:Key="CardSet10015">Colosseum</sys:String>
+     <sys:String x:Key="CardSet10016">Uprooted</sys:String>
+     <sys:String x:Key="CardSet10017">Fortune</sys:String>
+     <sys:String x:Key="CardSet10018">Rivayle</sys:String>
+     <sys:String x:Key="CardSet10019">Eternal</sys:String>
+     <sys:String x:Key="CardSet10020">Vellsar</sys:String>
+     <sys:String x:Key="CardSet10021">Renascent</sys:String>
+     <sys:String x:Key="CardSet10022">Calamity</sys:String>
+     <sys:String x:Key="CardSet10023">Storms</sys:String>
+     <sys:String x:Key="CardSet10024">Paradise</sys:String>
+     <sys:String x:Key="CardSet10025">Godwyrm</sys:String>
+     <sys:String x:Key="CardSet10026">Dragonblade</sys:String>
+     <sys:String x:Key="CardSet10027">Azvaldt</sys:String>
+     <sys:String x:Key="CardSet10028">Academy</sys:String>
+     <sys:String x:Key="CardSet10029">Rivenbrandt</sys:String>
+     <sys:String x:Key="CardSet10030">Order</sys:String>
+     <sys:String x:Key="CardSet10031">Resurgent</sys:String>
+     <sys:String x:Key="CardSet10032">Heroes</sys:String>
+     <sys:String x:Key="CardSet70000">Promo</sys:String>
 </ResourceDictionary>

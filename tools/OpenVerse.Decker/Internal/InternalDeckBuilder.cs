@@ -18,6 +18,8 @@ public sealed class InternalDeckBuilder
 
     public CardFilterLoader Filters { get; } = new();
 
+    public CardSetNames CardSets { get; }
+
     public FilterEngine FilterEngine { get; }
 
     /// <summary>Shared so its cache and its single decode thread are shared too.</summary>
@@ -35,7 +37,8 @@ public sealed class InternalDeckBuilder
     {
         Text = text;
         Stats = stats;
-        FilterEngine = CardFilterCatalog.Build(text, stats, Filters);
+        CardSets = new CardSetNames(stats.Id2CardSetId.Values);
+        FilterEngine = CardFilterCatalog.Build(text, stats, Filters, CardSets);
         _store = new DeckStore(AppConfig.Instance.OpenVerseDbPath);
 
         var repo = new DeckRepository(AppConfig.Instance.OpenVerseDbPath);

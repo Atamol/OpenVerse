@@ -34,8 +34,8 @@ public static class MissingStats
 
 public sealed class StatsLoader
 {
-    private const int CardIdCol = 0, CharTypeCol = 6, ClanCol = 7, TribeNameCol = 9, CostCol = 10,
-        AtkCol = 11, LifeCol = 12, EvoAtkCol = 13, EvoLifeCol = 14, RarityCol = 16;
+    private const int CardIdCol = 0, CardSetIdCol = 2, CharTypeCol = 6, ClanCol = 7, TribeNameCol = 9,
+        CostCol = 10, AtkCol = 11, LifeCol = 12, EvoAtkCol = 13, EvoLifeCol = 14, RarityCol = 16;
 
     // card_master marks "no tribe" with this token rather than leaving the column empty.
     private const string NoTribeToken = "TN_ALL";
@@ -52,6 +52,9 @@ public sealed class StatsLoader
     // card id to its tribe tokens
     public IReadOnlyDictionary<int, IReadOnlyList<string>> Id2Tribes { get; }
 
+    // card id to the pack it belongs to; see CardSetNames for what the ranges mean
+    public IReadOnlyDictionary<int, int> Id2CardSetId { get; }
+
     public IReadOnlyList<string> AllTribes { get; }
 
     // default card display order with these priorities
@@ -60,12 +63,13 @@ public sealed class StatsLoader
 
     public StatsLoader(string cardMasterCsvGzPath, IEnumerable<int> cardIds)
     {
-        var (unevolved, evolved, types, tribes) = ParseCardMaster(cardMasterCsvGzPath);
+        var (unevolved, evolved, types, tribes, sets) = ParseCardMaster(cardMasterCsvGzPath);
 
         Id2UnevolvedStats = unevolved;
         Id2EvolvedStats = evolved;
         Id2CardType = types;
         Id2Tribes = tribes;
+        Id2CardSetId = sets;
         AllTribes = tribes.Values
             .SelectMany(t => t)
             .GroupBy(t => t)
@@ -89,11 +93,17 @@ public sealed class StatsLoader
             .ToArray();
     }
 
-    public static IReadOnlyDictionary<int, CardStats> LoadUnevolvedStats(string cardMasterCsvGzPath) =>
-        ParseCardMaster(cardMasterCsvGzPath).Unevolved;
+    /// <summary>For TextLoader, which annotates card text with type/cost/stats and tribe.</summary>
+    public static (Dictionary<int, CardStats> Stats, Dictionary<int, IReadOnlyList<string>> Tribes)
+        LoadUnevolvedStatsAndTribes(string cardMasterCsvGzPath)
+    {
+        var parsed = ParseCardMaster(cardMasterCsvGzPath);
+        return (parsed.Unevolved, parsed.Tribes);
+    }
 
     private static (Dictionary<int, CardStats> Unevolved, Dictionary<int, CardStats> Evolved,
-        Dictionary<int, CardType> Types, Dictionary<int, IReadOnlyList<string>> Tribes)
+        Dictionary<int, CardType> Types, Dictionary<int, IReadOnlyList<string>> Tribes,
+        Dictionary<int, int> CardSetIds)
         ParseCardMaster(string cardMasterCsvGzPath)
     {
         if (!File.Exists(cardMasterCsvGzPath))
@@ -105,6 +115,7 @@ public sealed class StatsLoader
         var evolved = new Dictionary<int, CardStats>();
         var types = new Dictionary<int, CardType>();
         var tribes = new Dictionary<int, IReadOnlyList<string>>();
+        var cardSetIds = new Dictionary<int, int>();
 
         using (var fs = File.OpenRead(cardMasterCsvGzPath))
         using (var gz = new GZipStream(fs, CompressionMode.Decompress))
@@ -155,12 +166,17 @@ public sealed class StatsLoader
                     .Select(t => t.StartsWith("TN_", StringComparison.Ordinal) ? t[3..] : t)
                     .ToArray();
 
+                if (int.TryParse(f[CardSetIdCol], out var cardSetId))
+                {
+                    cardSetIds[id] = cardSetId;
+                }
+
                 unevolved[id] = new CardStats(cost, atk, life, cardType, rarity, clan);
                 evolved[id] = new CardStats(cost, evoAtk, evoLife, cardType, rarity, clan);
                 types[id] = cardType;
             }
         }
 
-        return (unevolved, evolved, types, tribes);
+        return (unevolved, evolved, types, tribes, cardSetIds);
     }
 }

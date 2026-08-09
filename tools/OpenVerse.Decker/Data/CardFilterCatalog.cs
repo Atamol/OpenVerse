@@ -33,7 +33,8 @@ public static class CardFilterCatalog
     public static readonly int[] ClanIds = [0, 1, 2, 3, 4, 5, 6, 7, 8];
     public static readonly int[] Rarities = [1, 2, 3, 4];
 
-    public static FilterEngine Build(TextLoader text, StatsLoader stats, CardFilterLoader cardFilters)
+    public static FilterEngine Build(
+        TextLoader text, StatsLoader stats, CardFilterLoader cardFilters, CardSetNames cardSets)
     {
         var order = stats.NormalOrder;
         var engine = new FilterEngine();
@@ -70,6 +71,12 @@ public static class CardFilterCatalog
             var needle = keyword.ToLowerInvariant();
             engine.AddStatic(FilterChild.Keyword(keyword), order.Where(id =>
                 text.Id2SearchText.GetValueOrDefault(id, string.Empty).Contains(needle, StringComparison.Ordinal)));
+        }
+
+        foreach (var setId in cardSets.Packs)
+        {
+            engine.AddStatic(FilterChild.CardSet(setId), order.Where(id =>
+                CardSetNames.BucketOf(stats.Id2CardSetId.GetValueOrDefault(id)) == setId));
         }
 
         engine.AddDynamic(FilterChild.SearchText, (argument, candidates) => MatchSearchTerms(text, argument, candidates));

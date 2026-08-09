@@ -12,6 +12,7 @@ public enum FilterGroup
     Rarity,
     Tribe,
     Keyword,
+    CardSet,
     SearchText,
 }
 
@@ -28,6 +29,7 @@ public readonly record struct FilterChild(FilterGroup Group, string Id)
     public static FilterChild Rarity(int rarity) => new(FilterGroup.Rarity, rarity.ToString());
     public static FilterChild Tribe(string tribe) => new(FilterGroup.Tribe, tribe);
     public static FilterChild Keyword(string keyword) => new(FilterGroup.Keyword, keyword);
+    public static FilterChild CardSet(int cardSetId) => new(FilterGroup.CardSet, cardSetId.ToString());
 
     public static FilterChild SearchText { get; } = new(FilterGroup.SearchText, nameof(SearchText));
 }

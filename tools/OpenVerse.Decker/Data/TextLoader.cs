@@ -211,27 +211,12 @@ public class TextLoader
             }
         }
 
-        var id2Desc = new Dictionary<int, string>();
-        foreach (var (cardId, baseDesc) in baseDescByCard)
+        var id2Stats = new Dictionary<int, CardStats>();
+        var id2Tribes = new Dictionary<int, IReadOnlyList<string>>();
+        if (cardMasterCsvGzPath is not null)
         {
-            id2Desc[cardId] = CardTextComposer.BuildDesc(baseDesc, evoDescByCard.GetValueOrDefault(cardId));
+            (id2Stats, id2Tribes) = StatsLoader.LoadUnevolvedStatsAndTribes(cardMasterCsvGzPath);
         }
-        // guard for an evo-only entry with no base counterpart - not expected in real data
-        foreach (var (cardId, evoDesc) in evoDescByCard)
-        {
-            if (!id2Desc.ContainsKey(cardId))
-            {
-                id2Desc[cardId] = CardTextComposer.BuildDesc(null, evoDesc);
-            }
-        }
-
-        Id2Name = id2Name;
-        RawName2Id = rawName2Id;
-        Id2Desc = id2Desc;
-
-        var id2Stats = cardMasterCsvGzPath is null
-            ? new Dictionary<int, CardStats>()
-            : StatsLoader.LoadUnevolvedStats(cardMasterCsvGzPath);
 
         // "{Type} {Cost}" for non-Followers, "{Type} {Cost} {Power}/{Life}" for Followers - same
         // -1-means-hide-stats convention as StatsLoader/DeckEditScreen/DescUserControl. Empty
@@ -245,6 +230,40 @@ public class TextLoader
             var abbrev = s.CardType.Abbreviation();
             return s.Power == -1 ? $"{abbrev} {s.Cost}" : $"{abbrev} {s.Cost} {s.Power}/{s.Life}";
         }
+
+        string TribeTextOf(int cardId) =>
+            id2Tribes.TryGetValue(cardId, out var t) ? string.Join(' ', t) : string.Empty;
+
+        // type/cost/stats and tribe as plain searchable text, so "Fol", "5/5" or "機械" all match
+        string FactsOf(int cardId) => $"{StatsTextOf(cardId)} {TribeTextOf(cardId)}".Trim();
+
+        // the tribe leads the card's own text. DescUserControl's title row carries type/cost/stats
+        // but not this, and a referenced card's panel inherits it for free because Id2AdditionalDesc
+        // pastes in the referenced card's Id2Desc.
+        string WithTribe(int cardId, string desc)
+        {
+            var tribe = TribeTextOf(cardId);
+            return tribe.Length == 0 ? desc : $"{tribe}\n\n{desc}";
+        }
+
+        var id2Desc = new Dictionary<int, string>();
+        foreach (var (cardId, baseDesc) in baseDescByCard)
+        {
+            id2Desc[cardId] = WithTribe(
+                cardId, CardTextComposer.BuildDesc(baseDesc, evoDescByCard.GetValueOrDefault(cardId)));
+        }
+        // guard for an evo-only entry with no base counterpart - not expected in real data
+        foreach (var (cardId, evoDesc) in evoDescByCard)
+        {
+            if (!id2Desc.ContainsKey(cardId))
+            {
+                id2Desc[cardId] = WithTribe(cardId, CardTextComposer.BuildDesc(null, evoDesc));
+            }
+        }
+
+        Id2Name = id2Name;
+        RawName2Id = rawName2Id;
+        Id2Desc = id2Desc;
 
         // strips a known filler PREFIX (if present) rather than discarding the whole string, so
         // any real text appended after it (e.g. a "treated as X" nickname annotation) survives
@@ -267,9 +286,11 @@ public class TextLoader
                 .Select(StripEvolutionFiller)
                 .Where(d => d.Length > 0));
 
+        // the referenced card's own facts ride along in its description, so a card is findable by
+        // the stats and tribe of what it summons as well as by its own
         (string Name, string Desc)? ResolveCardRaw(string rawName) =>
             rawName2Id.TryGetValue(rawName, out var refId) && id2Name.TryGetValue(refId, out var refName)
-                ? (refName, RawDescOf(refId))
+                ? (refName, $"{RawDescOf(refId)} {FactsOf(refId)}".Trim())
                 : null;
 
         (string Name, string Desc, string StatsText)? ResolveCard(string rawName) =>
@@ -282,7 +303,9 @@ public class TextLoader
         foreach (var (cardId, name) in id2Name)
         {
             // effect 2 descriptions is not defined yet.
-            id2RawFullDesc[cardId] = CardTextComposer.BuildRawFullDesc(name, RawDescOf(cardId), ResolveCardRaw);
+            var full = CardTextComposer.BuildRawFullDesc(name, RawDescOf(cardId), ResolveCardRaw);
+            var ownFacts = FactsOf(cardId);
+            id2RawFullDesc[cardId] = ownFacts.Length == 0 ? full : $"{full} {ownFacts}";
             id2AdditionalDesc[cardId] = CardTextComposer.BuildAdditionalDesc(
                 name, id2Desc.GetValueOrDefault(cardId, string.Empty), ResolveCard);
         }
