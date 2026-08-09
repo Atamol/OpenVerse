@@ -58,7 +58,9 @@
                 MouseLeftButtonDown="ItemFrame_MouseLeftButtonDown"
                 MouseMove="ItemFrame_MouseMove"
                 MouseLeftButtonUp="ItemFrame_MouseLeftButtonUp"
-                MouseRightButtonUp="ItemFrame_MouseRightButtonUp"/>
+                MouseRightButtonUp="ItemFrame_MouseRightButtonUp"
+                MouseEnter="ItemFrame_MouseEnter"
+                MouseLeave="ItemFrame_MouseLeave"/>
 
         <!--visible info of card: name,art,stats,type,cardtype(spl/fol/amu)-->
         <Border x:Name="GhostIcon"

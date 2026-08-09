@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using ShapePath = System.Windows.Shapes.Path;
 using AssetsTools.NET;
 using AssetsTools.NET.Extra;
@@ -80,8 +81,8 @@ public sealed class CardArtworkLoader : IDisposable
     /// Cache at roughly tile size, not the 1024x1024 the bundle ships: full size would be 4MB a
     /// card, so a full cache would cost about a gigabyte.
     /// </summary>
-    private const int CachedArtSize = 160;
-    private const int CacheLimit = 240;
+    private const int CachedArtSize = 128;
+    private const int CacheLimit = 2000;
 
     private readonly string _bundleDirectory;
     private readonly Stack<CardArtworkView> _pending = new();
@@ -127,20 +128,31 @@ public sealed class CardArtworkLoader : IDisposable
         {
             if (_cache.TryGetValue(view.CardId, out var cached))
             {
-                var wanted = view.CardId;
-                view.Dispatcher.BeginInvoke(() =>
-                {
-                    if (view.CardId == wanted)
-                    {
-                        view.Show(cached);
-                    }
-                });
+                Publish(view, view.CardId, cached);
                 return;
             }
             _pending.Push(view);
             Monitor.Pulse(_gate);
         }
     }
+
+    private static void Publish(CardArtworkView view, int cardId, BitmapSource? bitmap) =>
+        view.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            // the tile may have been recycled onto another card while this was decoding
+            if (view.CardId != cardId)
+            {
+                return;
+            }
+            if (bitmap is null)
+            {
+                view.ShowFallbackOnly();
+            }
+            else
+            {
+                view.Show(bitmap);
+            }
+        });
 
     private void Work()
     {
@@ -169,13 +181,7 @@ public sealed class CardArtworkLoader : IDisposable
             bitmap ??= Decode(cardId);
             if (bitmap is null)
             {
-                view.Dispatcher.BeginInvoke(() =>
-                {
-                    if (view.CardId == cardId)
-                    {
-                        view.ShowFallbackOnly();
-                    }
-                });
+                Publish(view, cardId, null);
                 continue;
             }
 
@@ -191,15 +197,7 @@ public sealed class CardArtworkLoader : IDisposable
                 }
             }
 
-            var ready = bitmap;
-            view.Dispatcher.BeginInvoke(() =>
-            {
-                // the tile may have been recycled onto another card while this was decoding
-                if (view.CardId == cardId)
-                {
-                    view.Show(ready);
-                }
-            });
+            Publish(view, cardId, bitmap);
         }
     }
 
@@ -279,7 +277,6 @@ public sealed class CardArtworkLoader : IDisposable
         return slice;
     }
 
-    /// <summary>Copies the scaled pixels out so the full-size source can be collected.</summary>
     private static BitmapSource Downscale(BitmapSource source, int maxSide)
     {
         if (source.PixelWidth <= maxSide && source.PixelHeight <= maxSide)

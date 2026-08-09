@@ -62,12 +62,21 @@ public partial class CardViewUserControl : UserControl
     /// </summary>
     public static CardArtworkLoader? Artwork { get; set; }
 
-    private static readonly IReadOnlyDictionary<int, Color> RarityColors = new Dictionary<int, Color>
+    private static SolidColorBrush Freeze(byte r, byte g, byte b)
     {
-        [1] = Color.FromRgb(0x7A, 0x5C, 0x3E), // bronze
-        [2] = Color.FromRgb(0x8A, 0x91, 0x99), // silver
-        [3] = Color.FromRgb(0xB3, 0x92, 0x37), // gold
-        [4] = Color.FromRgb(0x9C, 0x5A, 0x34), // legend(but i gave up rainbow)
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static readonly SolidColorBrush UnknownRarityFill = Freeze(0x44, 0x44, 0x4A);
+
+    private static readonly IReadOnlyDictionary<int, SolidColorBrush> RarityFills = new Dictionary<int, SolidColorBrush>
+    {
+        [1] = Freeze(0x7A, 0x5C, 0x3E), // bronze
+        [2] = Freeze(0x8A, 0x91, 0x99), // silver
+        [3] = Freeze(0xB3, 0x92, 0x37), // gold
+        [4] = Freeze(0x9C, 0x5A, 0x34), // legend(but i gave up rainbow)
     };
 
     internal enum ReleaseGesture { Ignored, Click, Drag }
@@ -98,6 +107,12 @@ public partial class CardViewUserControl : UserControl
     public static readonly RoutedEvent CardDragCompletedEvent = EventManager.RegisterRoutedEvent(
         nameof(CardDragCompleted), RoutingStrategy.Bubble, typeof(CardEventHandler), typeof(CardViewUserControl));
 
+    public static readonly RoutedEvent CardHoverEnterEvent = EventManager.RegisterRoutedEvent(
+        nameof(CardHoverEnter), RoutingStrategy.Bubble, typeof(CardEventHandler), typeof(CardViewUserControl));
+
+    public static readonly RoutedEvent CardHoverLeaveEvent = EventManager.RegisterRoutedEvent(
+        nameof(CardHoverLeave), RoutingStrategy.Bubble, typeof(CardEventHandler), typeof(CardViewUserControl));
+
     public event CardEventHandler CardLeftClick
     {
         add => AddHandler(CardLeftClickEvent, value);
@@ -114,6 +129,18 @@ public partial class CardViewUserControl : UserControl
     {
         add => AddHandler(CardDragCompletedEvent, value);
         remove => RemoveHandler(CardDragCompletedEvent, value);
+    }
+
+    public event CardEventHandler CardHoverEnter
+    {
+        add => AddHandler(CardHoverEnterEvent, value);
+        remove => RemoveHandler(CardHoverEnterEvent, value);
+    }
+
+    public event CardEventHandler CardHoverLeave
+    {
+        add => AddHandler(CardHoverLeaveEvent, value);
+        remove => RemoveHandler(CardHoverLeaveEvent, value);
     }
 
     private CardItem? _card;
@@ -149,12 +176,18 @@ public partial class CardViewUserControl : UserControl
         LifeText.Text = life;
 
         ShowArtwork(card);
+
+        // scrolling swaps a recycled tile's card under a stationary cursor and WPF raises no
+        // MouseEnter for that, so the tile re-announces itself rather than leaving a stale popup
+        if (IsMouseOver)
+        {
+            RaiseEvent(new CardRoutedEventArgs(CardHoverEnterEvent, card, GhostIcon));
+        }
     }
 
     private void ShowArtwork(CardItem card)
     {
-        var fallback = new SolidColorBrush(
-            RarityColors.GetValueOrDefault(card.Rarity, Color.FromRgb(0x44, 0x44, 0x4A)));
+        var fallback = RarityFills.GetValueOrDefault(card.Rarity, UnknownRarityFill);
 
         if (Artwork is not { IsAvailable: true } loader)
         {
@@ -227,6 +260,24 @@ public partial class CardViewUserControl : UserControl
         {
             PlayPressIn();
             RaiseEvent(new CardRoutedEventArgs(CardLeftClickEvent, card, GhostIcon));
+        }
+    }
+
+    // the tile itself is the event Source, which is what the owner anchors its popup to - a
+    // cursor-relative popup would slide the text around under the reader as they move the mouse
+    private void ItemFrame_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (_card is { } card)
+        {
+            RaiseEvent(new CardRoutedEventArgs(CardHoverEnterEvent, card, GhostIcon));
+        }
+    }
+
+    private void ItemFrame_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (_card is { } card)
+        {
+            RaiseEvent(new CardRoutedEventArgs(CardHoverLeaveEvent, card, GhostIcon));
         }
     }
 

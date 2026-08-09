@@ -10,16 +10,29 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="TypeText" Grid.Column="0" VerticalAlignment="Center"/>
-                <TextBlock x:Name="NameText" Grid.Column="1" FontWeight="Bold" FontSize="16" TextWrapping="Wrap" Margin="8,0,0,0"/>
-                <TextBlock x:Name="CostText" Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                <TextBlock x:Name="PowerText" Grid.Column="3" VerticalAlignment="Center"/>
-                <TextBlock x:Name="SlashText" Grid.Column="4" VerticalAlignment="Center" Text="/"/>
-                <TextBlock x:Name="LifeText" Grid.Column="5" VerticalAlignment="Center"/>
+                <TextBlock x:Name="TypeText"
+                           Grid.Column="0"
+                           VerticalAlignment="Center"/>
+                <TextBlock x:Name="NameText"
+                           Grid.Column="1"
+                           FontWeight="Bold"
+                           FontSize="16"
+                           TextWrapping="Wrap"
+                           Margin="8,0,0,0"/>
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal">
+                    <TextBlock x:Name="CostText"
+                               VerticalAlignment="Center"
+                               Margin="8,0,10,0"/>
+                    <TextBlock x:Name="PowerText"
+                               VerticalAlignment="Center"/>
+                    <TextBlock x:Name="SlashText"
+                               VerticalAlignment="Center"
+                               Text="/"/>
+                    <TextBlock x:Name="LifeText"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
             </Grid>
             <ScrollViewer VerticalScrollBarVisibility="Auto"
                           MaxHeight="500">

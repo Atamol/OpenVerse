@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -47,6 +48,29 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         RealizeRange(FirstVisibleIndex, LastVisibleIndex(itemCount), itemCount);
 
         return availableSize;
+    }
+
+    /// <summary>
+    /// Drops the containers the generator just discarded. Without this the panel keeps them in
+    /// InternalChildren, its indices drift out of step with the generator, and realizing the next
+    /// range tries to insert a container that is already a child.
+    /// </summary>
+    protected override void OnItemsChanged(object sender, ItemsChangedEventArgs args)
+    {
+        switch (args.Action)
+        {
+            case NotifyCollectionChangedAction.Remove:
+            case NotifyCollectionChangedAction.Replace:
+            case NotifyCollectionChangedAction.Move:
+                if (args.ItemUICount > 0)
+                {
+                    RemoveInternalChildRange(args.Position.Index, args.ItemUICount);
+                }
+                break;
+            case NotifyCollectionChangedAction.Reset:
+                RemoveInternalChildRange(0, InternalChildren.Count);
+                break;
+        }
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -100,17 +124,17 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         {
             for (var i = first; i <= last; i++, childIndex++)
             {
-                var child = (UIElement)generator.GenerateNext(out var isNewlyRealized);
-                if (isNewlyRealized)
+                // a container off the recycle queue reports isNewlyRealized false yet is no longer
+                // in the panel, so what matters is whether it already sits at this slot
+                var child = (UIElement)generator.GenerateNext(out _);
+                if (childIndex >= InternalChildren.Count)
                 {
-                    if (childIndex >= InternalChildren.Count)
-                    {
-                        AddInternalChild(child);
-                    }
-                    else
-                    {
-                        InsertInternalChild(childIndex, child);
-                    }
+                    AddInternalChild(child);
+                    generator.PrepareItemContainer(child);
+                }
+                else if (!ReferenceEquals(InternalChildren[childIndex], child))
+                {
+                    InsertInternalChild(childIndex, child);
                     generator.PrepareItemContainer(child);
                 }
                 child.Measure(new Size(ItemWidth, ItemHeight));
@@ -120,16 +144,21 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         CleanUpOutside(first, last);
     }
 
+    /// <summary>
+    /// Recycles the containers that scrolled away. Remove would discard them instead, and every
+    /// row crossed would then have to build a whole row of tiles from scratch.
+    /// </summary>
     private void CleanUpOutside(int first, int last)
     {
         var generator = ItemContainerGenerator;
+        var recycler = (IRecyclingItemContainerGenerator)generator;
         for (var i = InternalChildren.Count - 1; i >= 0; i--)
         {
             var position = new GeneratorPosition(i, 0);
             var index = generator.IndexFromGeneratorPosition(position);
             if (index < first || index > last)
             {
-                generator.Remove(position, 1);
+                recycler.Recycle(position, 1);
                 RemoveInternalChildRange(i, 1);
             }
         }
@@ -183,8 +212,9 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
     public void LineDown() => SetVerticalOffset(_offset.Y + ItemHeight / 3);
     public void PageUp() => SetVerticalOffset(_offset.Y - _viewport.Height);
     public void PageDown() => SetVerticalOffset(_offset.Y + _viewport.Height);
-    public void MouseWheelUp() => SetVerticalOffset(_offset.Y - ItemHeight / 2);
-    public void MouseWheelDown() => SetVerticalOffset(_offset.Y + ItemHeight / 2);
+    // one notch moves exactly one card, which also keeps the offset row-aligned
+    public void MouseWheelUp() => SetVerticalOffset(_offset.Y - ItemHeight);
+    public void MouseWheelDown() => SetVerticalOffset(_offset.Y + ItemHeight);
 
     public void LineLeft() { }
     public void LineRight() { }

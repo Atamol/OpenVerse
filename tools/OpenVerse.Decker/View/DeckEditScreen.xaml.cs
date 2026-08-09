@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using OpenVerse.Common;
@@ -35,6 +36,14 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
     // color for activated filter button
     private static readonly SolidColorBrush ActiveFilterFill = Freeze(Color.FromRgb(0xBC, 0xDD, 0xEE));
 
+    // alpha on the fill, not Opacity on the border: Opacity would fade the description text with it
+    private static readonly SolidColorBrush HoverPopupFill = Freeze(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF));
+    private static readonly SolidColorBrush HoverPopupBorder = Freeze(Color.FromArgb(0xDD, 0x80, 0x80, 0x80));
+
+    private readonly DescUserControl _hoverDesc = new(interactive: false);
+    private readonly Popup _hoverPopup;
+    private UIElement? _hoveredTile;
+
     private static SolidColorBrush Freeze(Color color)
     {
         var brush = new SolidColorBrush(color);
@@ -42,9 +51,7 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         return brush;
     }
 
-    // typing re-filters only once input settles: every keystroke would otherwise rebuild the whole
-    // candidate list, and WPF raises TextChanged mid-IME-composition too (e.g. while "だめ" is
-    // still unconfirmed), so those intermediate results are built and discarded unseen.
+    // Prevent multiple dynamic filter refresh call while typing characters in search text, just call once for a cluster of inputs.
     private readonly DispatcherTimer _searchDebounce = new() { Interval = TimeSpan.FromMilliseconds(200) };
 
     public ObservableCollection<CardItem> DeckCards { get; } = [];
@@ -83,12 +90,21 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         _searchDebounce.Tick += (_, _) => ApplyFiltersNow();
         CardViewUserControl.Artwork = _builder.Artwork;
 
+        _hoverPopup = BuildHoverPopup(_hoverDesc);
+        // a popup is its own top-level window, so leaving this screen would strand it on screen
+        Unloaded += (_, _) => CloseHoverPopup();
+
         DeckGrid.AddHandler(CardViewUserControl.CardLeftClickEvent, new CardEventHandler(Card_LeftClick));
         DeckGrid.AddHandler(CardViewUserControl.CardRightClickEvent, new CardEventHandler(DeckCard_RightClick));
         DeckGrid.AddHandler(CardViewUserControl.CardDragCompletedEvent, new CardEventHandler(Card_DragCompleted));
         CandidateGrid.AddHandler(CardViewUserControl.CardLeftClickEvent, new CardEventHandler(Card_LeftClick));
         CandidateGrid.AddHandler(CardViewUserControl.CardRightClickEvent, new CardEventHandler(CandidateCard_RightClick));
         CandidateGrid.AddHandler(CardViewUserControl.CardDragCompletedEvent, new CardEventHandler(Card_DragCompleted));
+        foreach (var grid in new[] { DeckGrid, CandidateGrid })
+        {
+            grid.AddHandler(CardViewUserControl.CardHoverEnterEvent, new CardEventHandler(Card_HoverEnter));
+            grid.AddHandler(CardViewUserControl.CardHoverLeaveEvent, new CardEventHandler(Card_HoverLeave));
+        }
 
         BuildFilterButtons();
         RefreshDeckCards();
@@ -109,11 +125,35 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         _cardIds.Clear();
         _cardIds.AddRange(sorted);
 
-        DeckCards.Clear();
-        foreach (var group in _cardIds.GroupBy(id => id))
+        // id to duplication count(number of cards)
+        var copies = _cardIds.GroupBy(id => id).ToDictionary(g => g.Key, g => g.Count());
+
+        // remove visible ui from deck if its card id doesn't exist
+        for (var i = DeckCards.Count - 1; i >= 0; i--)
         {
-            DeckCards.Add(MakeCardItem(group.Key, group.Count()));
+            if (!copies.ContainsKey(DeckCards[i].CardId))
+            {
+                DeckCards.RemoveAt(i);
+                CloseHoverPopup();
+            }
         }
+
+        var row = 0;
+        foreach (var cardId in _cardIds.Distinct())
+        {
+            if (row < DeckCards.Count && DeckCards[row].CardId == cardId)
+            {
+                // adjust number counter of visible ui in deck if number of its card is changed.
+                DeckCards[row].Count = copies[cardId];
+            }
+            else
+            {
+                // create new visible if if its card is created newly.
+                DeckCards.Insert(row, MakeCardItem(cardId, copies[cardId]));
+            }
+            row++;
+        }
+
         SyncCandidateCounts();
         OnPropertyChanged(nameof(TotalCardCount));
     }
@@ -201,9 +241,6 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
             },
         };
 
-        // StaysOpen=false dismisses the popup on the very press that then reaches the opener, so
-        // pressing an open opener would close and immediately reopen it. Treat a re-check that
-        // lands right after a dismissal as the close the user actually asked for.
         var lastDismissed = DateTime.MinValue;
         opener.Checked += (_, _) =>
         {
@@ -302,8 +339,31 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        SearchClearButton.Visibility = SearchBox.Text.Length > 0 ? Visibility.Visible : Visibility.Hidden;
         _searchDebounce.Stop();
         _searchDebounce.Start();
+    }
+
+    private void SearchClear_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();
+        SearchBox.Focus();
+        ApplyFiltersNow();
+    }
+
+    private void SearchBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => SearchBox.SelectAll();
+
+    /// <summary>
+    /// Clicking an unfocused box would place the caret and drop the selection that
+    /// <see cref="SearchBox_GotKeyboardFocus"/> just made, so the first click only takes focus.
+    /// </summary>
+    private void SearchBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!SearchBox.IsKeyboardFocusWithin)
+        {
+            e.Handled = true;
+            SearchBox.Focus();
+        }
     }
 
     private void ApplyFiltersNow()
@@ -339,8 +399,60 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         }
     }
 
-    private void Card_LeftClick(object sender, CardRoutedEventArgs e) =>
+    /// <summary>
+    /// Anchored to the tile rather than the cursor, and never hit-testable: a popup that took the
+    /// mouse would raise MouseLeave on the tile under it and flicker itself shut.
+    /// </summary>
+    private static Popup BuildHoverPopup(DescUserControl desc) => new()
+    {
+        Placement = PlacementMode.Right,
+        AllowsTransparency = true,
+        IsHitTestVisible = false,
+        Child = new Border
+        {
+            IsHitTestVisible = false,
+            Background = HoverPopupFill,
+            BorderBrush = HoverPopupBorder,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(12),
+            Child = desc,
+        },
+    };
+
+    private void Card_HoverEnter(object sender, CardRoutedEventArgs e)
+    {
+        // OriginalSource, not Source: an ItemsControl re-sources events coming from its item
+        // containers to itself, which would anchor the popup to the whole grid instead of the card
+        if (e.OriginalSource is not UIElement tile)
+        {
+            return;
+        }
+        _hoveredTile = tile;
+        _hoverDesc.ShowCard(_builder.Text, _builder.Stats, e.Card.CardId);
+        _hoverPopup.PlacementTarget = tile;
+        _hoverPopup.IsOpen = true;
+    }
+
+    private void Card_HoverLeave(object sender, CardRoutedEventArgs e)
+    {
+        if (ReferenceEquals(_hoveredTile, e.OriginalSource))
+        {
+            CloseHoverPopup();
+        }
+    }
+
+    private void CloseHoverPopup()
+    {
+        _hoveredTile = null;
+        _hoverPopup.IsOpen = false;
+    }
+
+    private void Card_LeftClick(object sender, CardRoutedEventArgs e)
+    {
+        CloseHoverPopup();
         _core.ShowFocused(new DescUserControl(_builder.Text, _builder.Stats, e.Card.CardId));
+    }
 
     private void DeckCard_RightClick(object sender, CardRoutedEventArgs e) => RemoveCopy(e.Card.CardId);
 
