@@ -1,12 +1,10 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
-using CommunityToolkit.Mvvm.ComponentModel;
 using OpenVerse.Common;
 using OpenVerse.Decker.Data;
 using OpenVerse.Decker.Internal;
@@ -27,14 +25,22 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
     private readonly Deck _deck;
     private readonly List<int> _cardIds;
 
-    // card id -> its position in _builder.Stats.NormalOrder (Cost -> CardType -> Rarity -> Id, the
-    // same order the candidate list uses) - built once since NormalOrder itself never changes for
-    // the lifetime of this screen.
+    // card id -> NormalOrder (Cost -> CardType -> Rarity -> Id
     private readonly Dictionary<int, int> _normalOrderRank;
 
     private readonly HashSet<FilterChild> _activeFilters = [];
     private readonly List<ToggleButton> _filterButtons = [];
     private readonly List<(ToggleButton Opener, FilterChild[] Children)> _expandableGroups = [];
+
+    // color for activated filter button
+    private static readonly SolidColorBrush ActiveFilterFill = Freeze(Color.FromRgb(0xBC, 0xDD, 0xEE));
+
+    private static SolidColorBrush Freeze(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
 
     // typing re-filters only once input settles: every keystroke would otherwise rebuild the whole
     // candidate list, and WPF raises TextChanged mid-IME-composition too (e.g. while "だめ" is
@@ -220,17 +226,18 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         _expandableGroups.Add((opener, [.. childFilters]));
     }
 
-    /// <summary>
-    /// IsChecked already means "popup open" on these openers, so an active child is shown by
-    /// painting the opener instead - otherwise a collapsed group hides that it is filtering.
-    /// </summary>
     private void RefreshExpandableOpeners()
     {
         foreach (var (opener, children) in _expandableGroups)
         {
-            // background only - overriding Foreground made the label vanish into the tint
-            var anyActive = children.Any(_activeFilters.Contains);
-            opener.Background = anyActive ? SystemColors.HighlightBrush : null;
+            if (children.Any(_activeFilters.Contains))
+            {
+                opener.Background = ActiveFilterFill;
+            }
+            else
+            {
+                opener.ClearValue(BackgroundProperty);
+            }
         }
     }
 
@@ -299,10 +306,6 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         _searchDebounce.Start();
     }
 
-    /// <summary>
-    /// Filters straight away and drops any keystroke still waiting on the debounce, so a click
-    /// never gets re-applied a moment later by a timer the user has already moved past.
-    /// </summary>
     private void ApplyFiltersNow()
     {
         _searchDebounce.Stop();
@@ -336,7 +339,6 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         }
     }
 
-    // --- card tile gestures ---------------------------------------------------------------
     private void Card_LeftClick(object sender, CardRoutedEventArgs e) =>
         _core.ShowFocused(new DescUserControl(_builder.Text, _builder.Stats, e.Card.CardId));
 
