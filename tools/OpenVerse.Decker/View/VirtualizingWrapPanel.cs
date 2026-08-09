@@ -2,6 +2,7 @@ using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace OpenVerse.Decker.View;
@@ -34,6 +35,8 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
     }
 
     private int _columns = 1;
+    private int _firstRow;
+    private double _wheelNotches;
 
     protected override Size MeasureOverride(Size availableSize)
     {
@@ -95,8 +98,7 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
     private int ItemCount =>
         ItemsControl.GetItemsOwner(this)?.Items.Count ?? 0;
 
-    private int FirstVisibleIndex =>
-        Math.Max(0, (int)Math.Floor(_offset.Y / ItemHeight)) * _columns;
+    private int FirstVisibleIndex => _firstRow * _columns;
 
     private int LastVisibleIndex(int itemCount)
     {
@@ -178,12 +180,26 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
     public double VerticalOffset => _offset.Y;
     public ScrollViewer? ScrollOwner { get; set; }
 
+    /// <summary>
+    /// The scroll position is the first visible row, and the pixel offset is always derived from
+    /// it. Carrying the pixel offset instead lets one clamp against a shrunken extent knock it off
+    /// a row boundary, and every later scroll inherits that, clipping the top row.
+    /// </summary>
+    private int MaxFirstRow =>
+        Math.Max(0, (int)Math.Ceiling(Math.Max(0, _extent.Height - _viewport.Height) / ItemHeight));
+
+    private void ScrollToRow(int row)
+    {
+        _firstRow = Math.Clamp(row, 0, MaxFirstRow);
+        _offset.Y = _firstRow * ItemHeight;
+    }
+
     private void UpdateScrollInfo(Size viewport, Size extent)
     {
         var changed = extent != _extent || viewport != _viewport;
         _extent = extent;
         _viewport = viewport;
-        _offset.Y = Math.Max(0, Math.Min(_offset.Y, _extent.Height - _viewport.Height));
+        ScrollToRow(_firstRow);
 
         if (changed)
         {
@@ -193,12 +209,12 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
 
     public void SetVerticalOffset(double offset)
     {
-        var clamped = Math.Max(0, Math.Min(offset, Math.Max(0, _extent.Height - _viewport.Height)));
-        if (Math.Abs(clamped - _offset.Y) < 0.01)
+        var row = Math.Clamp((int)Math.Round(offset / ItemHeight), 0, MaxFirstRow);
+        if (row == _firstRow)
         {
             return;
         }
-        _offset.Y = clamped;
+        ScrollToRow(row);
         ScrollOwner?.InvalidateScrollInfo();
         InvalidateMeasure();
     }
@@ -208,13 +224,38 @@ public class VirtualizingWrapPanel : VirtualizingPanel, IScrollInfo
         // items always wrap to the viewport width, so there is nothing to scroll sideways to
     }
 
-    public void LineUp() => SetVerticalOffset(_offset.Y - ItemHeight / 3);
-    public void LineDown() => SetVerticalOffset(_offset.Y + ItemHeight / 3);
-    public void PageUp() => SetVerticalOffset(_offset.Y - _viewport.Height);
-    public void PageDown() => SetVerticalOffset(_offset.Y + _viewport.Height);
-    // one notch moves exactly one card, which also keeps the offset row-aligned
-    public void MouseWheelUp() => SetVerticalOffset(_offset.Y - ItemHeight);
-    public void MouseWheelDown() => SetVerticalOffset(_offset.Y + ItemHeight);
+    // everything moves in whole rows now: a sub-row step would round back to the row it started on
+    public void LineUp() => ScrollByRows(-1);
+    public void LineDown() => ScrollByRows(1);
+    public void PageUp() => ScrollByRows(-RowsPerPage);
+    public void PageDown() => ScrollByRows(RowsPerPage);
+
+    private int RowsPerPage => Math.Max(1, (int)(_viewport.Height / ItemHeight));
+
+    private void ScrollByRows(int rows) => SetVerticalOffset((_firstRow + rows) * ItemHeight);
+    // one notch moves exactly one card
+    public void MouseWheelUp() => ScrollByRows(-1);
+    public void MouseWheelDown() => ScrollByRows(1);
+
+    /// <summary>
+    /// Moves by however many notches the event actually carries. ScrollViewer reads only the sign
+    /// of Delta, so a single event that merged several notches - which is exactly what arrives
+    /// while the UI thread is busy - would move one row and silently drop the rest.
+    /// </summary>
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        // a high resolution wheel sends fractions of a notch; carrying the remainder keeps every
+        // stop on a row boundary without throwing away the part that did not fill a row yet
+        _wheelNotches += e.Delta / (double)Mouse.MouseWheelDeltaForOneLine;
+        var rows = (int)_wheelNotches;
+        _wheelNotches -= rows;
+
+        if (rows != 0)
+        {
+            ScrollByRows(-rows);
+        }
+        e.Handled = true;
+    }
 
     public void LineLeft() { }
     public void LineRight() { }

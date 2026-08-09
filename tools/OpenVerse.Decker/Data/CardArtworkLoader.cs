@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -85,17 +86,28 @@ public sealed class CardArtworkLoader : IDisposable
     private const int CacheLimit = 2000;
 
     private readonly string _bundleDirectory;
-    private readonly Stack<CardArtworkView> _pending = new();
+    // newest last, so the worker pops what just came on screen. One entry per view, because a view
+    // can only ever show its current card - without that the backlog grows with every row scrolled.
+    private readonly List<CardArtworkView> _pending = [];
+    private readonly HashSet<CardArtworkView> _queued = [];
     private readonly Dictionary<int, BitmapSource> _cache = [];
     private readonly Queue<int> _cacheOrder = new();
     private readonly object _gate = new();
+    private readonly FrameBudgetApplier _applier = new();
     private readonly Thread _worker;
     private bool _disposed;
 
     public CardArtworkLoader(string bundleDirectory)
     {
         _bundleDirectory = bundleDirectory;
-        _worker = new Thread(Work) { IsBackground = true, Name = "card-artwork" };
+        // below normal on purpose: art is a nicety and the scheduler should always hand the UI
+        // thread the core first, or decoding a run of new cards drags on scrolling
+        _worker = new Thread(Work)
+        {
+            IsBackground = true,
+            Name = "card-artwork",
+            Priority = ThreadPriority.BelowNormal,
+        };
         _worker.Start();
     }
 
@@ -113,10 +125,14 @@ public sealed class CardArtworkLoader : IDisposable
     public void Rebind(CardArtworkView view, int cardId)
     {
         view.CardId = cardId;
-        view.ResetToPlaceholder();
         Request(view);
     }
 
+    /// <summary>
+    /// Called from the UI thread, so an already decoded card is shown in this same layout pass.
+    /// Resetting to the glyph first, or handing even a cached bitmap to the dispatcher, would draw
+    /// at least one frame of placeholder - the flash seen when scrolling back over a card.
+    /// </summary>
     private void Request(CardArtworkView view)
     {
         if (!IsAvailable)
@@ -124,35 +140,82 @@ public sealed class CardArtworkLoader : IDisposable
             return;
         }
 
+        BitmapSource? cached;
         lock (_gate)
         {
-            if (_cache.TryGetValue(view.CardId, out var cached))
+            if (!_cache.TryGetValue(view.CardId, out cached))
             {
-                Publish(view, view.CardId, cached);
-                return;
+                if (_queued.Add(view))
+                {
+                    _pending.Add(view);
+                }
+                Monitor.Pulse(_gate);
             }
-            _pending.Push(view);
-            Monitor.Pulse(_gate);
+        }
+
+        if (cached is not null)
+        {
+            view.Show(cached);
+        }
+        else
+        {
+            view.ResetToPlaceholder();
         }
     }
 
-    private static void Publish(CardArtworkView view, int cardId, BitmapSource? bitmap) =>
-        view.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+    private void Publish(CardArtworkView view, int cardId, BitmapSource? bitmap) =>
+        view.Dispatcher.BeginInvoke(DispatcherPriority.Background, () => _applier.Enqueue(view, cardId, bitmap));
+
+    /// <summary>
+    /// Hands freshly decoded bitmaps to the UI a few per frame. Assigning one makes WPF realise a
+    /// render resource for it, so a burst applied together shows up as a stutter; spreading them
+    /// over frames keeps each one inside the frame that can afford it.
+    /// </summary>
+    private sealed class FrameBudgetApplier
+    {
+        private const double BudgetMilliseconds = 3;
+
+        private readonly Queue<(CardArtworkView View, int CardId, BitmapSource? Bitmap)> _ready = new();
+        private bool _hooked;
+
+        public void Enqueue(CardArtworkView view, int cardId, BitmapSource? bitmap)
         {
-            // the tile may have been recycled onto another card while this was decoding
-            if (view.CardId != cardId)
+            _ready.Enqueue((view, cardId, bitmap));
+            if (!_hooked)
             {
-                return;
+                _hooked = true;
+                CompositionTarget.Rendering += Drain;
             }
-            if (bitmap is null)
+        }
+
+        private void Drain(object? sender, EventArgs e)
+        {
+            var clock = Stopwatch.StartNew();
+            while (_ready.Count > 0 && clock.Elapsed.TotalMilliseconds < BudgetMilliseconds)
             {
-                view.ShowFallbackOnly();
+                var (view, cardId, bitmap) = _ready.Dequeue();
+                // the tile may have been recycled onto another card while this was queued
+                if (view.CardId != cardId)
+                {
+                    continue;
+                }
+                if (bitmap is null)
+                {
+                    view.ShowFallbackOnly();
+                }
+                else
+                {
+                    view.Show(bitmap);
+                }
             }
-            else
+
+            if (_ready.Count == 0)
             {
-                view.Show(bitmap);
+                _hooked = false;
+                CompositionTarget.Rendering -= Drain;
             }
-        });
+        }
+    }
 
     private void Work()
     {
@@ -169,7 +232,10 @@ public sealed class CardArtworkLoader : IDisposable
                 {
                     return;
                 }
-                view = _pending.Pop();
+                var newest = _pending.Count - 1;
+                view = _pending[newest];
+                _pending.RemoveAt(newest);
+                _queued.Remove(view);
             }
 
             var cardId = view.CardId;
@@ -209,9 +275,9 @@ public sealed class CardArtworkLoader : IDisposable
             return null;
         }
 
+        var manager = new AssetsManager();
         try
         {
-            var manager = new AssetsManager();
             var bundle = manager.LoadBundleFile(path, true);
             var assets = manager.LoadAssetsFileFromBundle(bundle, 0, false);
 
@@ -239,12 +305,11 @@ public sealed class CardArtworkLoader : IDisposable
                     continue;
                 }
 
-                // Unity textures start at the bottom row, so the stride is walked backwards
                 var full = BitmapSource.Create(
                     texture.m_Width, texture.m_Height, 96, 96, PixelFormats.Bgra32, null,
-                    FlipVertically(bgra, texture.m_Width, texture.m_Height), texture.m_Width * 4);
+                    bgra, texture.m_Width * 4);
 
-                var shrunk = Downscale(full, CachedArtSize);
+                var shrunk = ToTileSize(full, CachedArtSize);
                 shrunk.Freeze();
                 return shrunk;
             }
@@ -252,6 +317,12 @@ public sealed class CardArtworkLoader : IDisposable
         catch (Exception)
         {
             // a corrupt or half-downloaded bundle just leaves the placeholder showing
+        }
+        finally
+        {
+            // the bundle and its streams stay live otherwise, and at one decode after another that
+            // is what drives the gen2 collections that stutter the UI thread
+            manager.UnloadAll();
         }
         return null;
     }
@@ -277,31 +348,19 @@ public sealed class CardArtworkLoader : IDisposable
         return slice;
     }
 
-    private static BitmapSource Downscale(BitmapSource source, int maxSide)
+    /// <summary>
+    /// Shrinks to tile size, and flips on the way because Unity stores rows bottom-up. The negative
+    /// Y scale folds that into the same transform, sparing a second full-size copy per decode.
+    /// </summary>
+    private static BitmapSource ToTileSize(BitmapSource source, int maxSide)
     {
-        if (source.PixelWidth <= maxSide && source.PixelHeight <= maxSide)
-        {
-            return source;
-        }
-
-        var scale = maxSide / (double)Math.Max(source.PixelWidth, source.PixelHeight);
-        var scaled = new TransformedBitmap(source, new ScaleTransform(scale, scale));
+        var scale = Math.Min(1.0, maxSide / (double)Math.Max(source.PixelWidth, source.PixelHeight));
+        var scaled = new TransformedBitmap(source, new ScaleTransform(scale, -scale));
         var stride = scaled.PixelWidth * 4;
         var pixels = new byte[stride * scaled.PixelHeight];
         scaled.CopyPixels(pixels, stride, 0);
         return BitmapSource.Create(
             scaled.PixelWidth, scaled.PixelHeight, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
-    }
-
-    private static byte[] FlipVertically(byte[] bgra, int width, int height)
-    {
-        var stride = width * 4;
-        var flipped = new byte[bgra.Length];
-        for (var row = 0; row < height; row++)
-        {
-            Array.Copy(bgra, row * stride, flipped, (height - 1 - row) * stride, stride);
-        }
-        return flipped;
     }
 
     public void Dispose()
