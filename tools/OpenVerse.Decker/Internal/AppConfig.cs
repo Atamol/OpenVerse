@@ -47,6 +47,20 @@ public sealed class AppConfig : INotifyPropertyChanged
     }
     private string _cardMasterCsvPath = Path.Combine(AppContext.BaseDirectory, "data", "card_master_full.csv.gz");
 
+    /// <summary>
+    /// where the client caches card_*.unity3d. Missing or wrong just means the tiles keep their
+    /// rarity colour instead of art.
+    /// </summary>
+    [JsonPropertyName("card_bundle_dir_path")]
+    public string CardBundleDirPath
+    {
+        get => _cardBundleDirPath;
+        set { _cardBundleDirPath = value; Save(); RaisePropertyChanged(); }
+    }
+    private string _cardBundleDirPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "AppData", "LocalLow", "Cygames", "Shadowverse", "a");
+
     [JsonPropertyName("openverse_db_path")]
     public string OpenVerseDbPath
     {

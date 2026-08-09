@@ -1,0 +1,178 @@
+<UserControl x:Class="OpenVerse.Decker.View.CardViewUserControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:OpenVerse.Decker.View"
+             Width="116"
+             Height="156">
+    <UserControl.Resources>
+        <local:PositiveToVisibilityConverter x:Key="PositiveToVisibility"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+
+        <SolidColorBrush x:Key="CostFill"
+                         Color="#3E7D52"/>
+        <SolidColorBrush x:Key="AttackFill"
+                         Color="#3D5C7A"/>
+        <SolidColorBrush x:Key="LifeFill"
+                         Color="#8A4741"/>
+        <SolidColorBrush x:Key="BadgeOutline"
+                         Color="#14141A"/>
+        <SolidColorBrush x:Key="StatText"
+                         Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="SubText"
+                         Color="#9AA0A6"/>
+
+        <Style x:Key="StatNumber"
+               TargetType="TextBlock">
+            <Setter Property="FontSize"
+                    Value="18"/>
+            <Setter Property="FontWeight"
+                    Value="Bold"/>
+            <Setter Property="Foreground"
+                    Value="{StaticResource StatText}"/>
+            <Setter Property="HorizontalAlignment"
+                    Value="Center"/>
+            <Setter Property="VerticalAlignment"
+                    Value="Center"/>
+            <Setter Property="Margin"
+                    Value="0,0,0,2.3"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#000000"
+                                      BlurRadius="4"
+                                      ShadowDepth="1.5"
+                                      Direction="270"
+                                      Opacity="0.9"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!--the background frame has the actual hitbox for ui interaction which foreground icon doesn't have because
+        moving hitbox while interactions will be too much complex logic-->
+        <Border x:Name="ItemFrame"
+                Background="#1E1E22"
+                BorderBrush="#3A3A42"
+                BorderThickness="1"
+                CornerRadius="3"
+                MouseLeftButtonDown="ItemFrame_MouseLeftButtonDown"
+                MouseMove="ItemFrame_MouseMove"
+                MouseLeftButtonUp="ItemFrame_MouseLeftButtonUp"
+                MouseRightButtonUp="ItemFrame_MouseRightButtonUp"/>
+
+        <!--visible info of card: name,art,stats,type,cardtype(spl/fol/amu)-->
+        <Border x:Name="GhostIcon"
+                Margin="3"
+                IsHitTestVisible="False"
+                RenderTransformOrigin="0.5,0.5">
+            <Border.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform x:Name="GhostScale"/>
+                    <TranslateTransform x:Name="GhostTranslate"/>
+                </TransformGroup>
+            </Border.RenderTransform>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Name="NameText"
+                           Grid.Row="0"
+                           FontSize="9"
+                           Foreground="#E8E8EC"
+                           TextWrapping="Wrap"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center"
+                           Margin="2,1,2,0"/>
+
+                <Grid Grid.Row="1"
+                      Margin="2,0,2,1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="TypeText"
+                               Grid.Column="0"
+                               FontSize="8"
+                               Foreground="{StaticResource SubText}"
+                               VerticalAlignment="Center"/>
+                    <Border Grid.Column="1"
+                            Width="4"/>
+                    <TextBlock x:Name="TribeText"
+                               Grid.Column="2"
+                               FontSize="8"
+                               Foreground="{StaticResource SubText}"
+                               TextWrapping="Wrap"
+                               TextAlignment="Right"
+                               VerticalAlignment="Center"/>
+                </Grid>
+
+                <Grid Grid.Row="2">
+                    <ContentControl x:Name="ArtworkHost"
+                                    Width="110"
+                                    Height="110"/>
+
+                    <!--cost: circle, top left-->
+                    <Grid Width="29"
+                          Height="29"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Top">
+                        <Ellipse Fill="{StaticResource CostFill}"
+                                 Stroke="{StaticResource BadgeOutline}"
+                                 StrokeThickness="1.5"/>
+                        <TextBlock x:Name="CostText"
+                                   Style="{StaticResource StatNumber}"/>
+                    </Grid>
+
+                    <!--attack: blue trapezoid with narrow top-->
+                    <Grid Width="29"
+                          Height="29"
+                          HorizontalAlignment="Left"
+                          VerticalAlignment="Bottom"
+                          Visibility="{Binding HasStats, Converter={StaticResource BoolToVisibility}}">
+                        <Polygon Points="8.5,1.5 20.5,1.5 27.5,27.5 1.5,27.5"
+                                 Fill="{StaticResource AttackFill}"
+                                 Stroke="{StaticResource BadgeOutline}"
+                                 StrokeThickness="3"
+                                 StrokeLineJoin="Round"/>
+                        <TextBlock x:Name="AttackText"
+                                   Style="{StaticResource StatNumber}"/>
+                    </Grid>
+
+                    <!--life: red trapezoid with narrow bottom-->
+                    <Grid Width="29"
+                          Height="29"
+                          HorizontalAlignment="Right"
+                          VerticalAlignment="Bottom"
+                          Visibility="{Binding HasStats, Converter={StaticResource BoolToVisibility}}">
+                        <Polygon Points="1.5,1.5 27.5,1.5 20.5,27.5 8.5,27.5"
+                                 Fill="{StaticResource LifeFill}"
+                                 Stroke="{StaticResource BadgeOutline}"
+                                 StrokeThickness="3"
+                                 StrokeLineJoin="Round"/>
+                        <TextBlock x:Name="LifeText"
+                                   Style="{StaticResource StatNumber}"/>
+                    </Grid>
+
+                    <!--number of the card in the deck-->
+                    <Border HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Margin="2"
+                            Padding="6,0"
+                            CornerRadius="3"
+                            Background="#CC000000"
+                            Visibility="{Binding Count, Converter={StaticResource PositiveToVisibility}}">
+                        <TextBlock Text="{Binding Count, StringFormat=x{0}}"
+                                   FontSize="22"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource StatText}"/>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

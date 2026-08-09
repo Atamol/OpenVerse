@@ -24,8 +24,13 @@ public static class CardTypeExtensions
     };
 }
 
-/// <summary>Clan 0 is Neutral; 1..8 are the craft classes (see InternalDeckBuilder.ValidClanIds).</summary>
+/// <summary>Clan 0 is Neutral; 1..8 are the craft classes.</summary>
 public sealed record CardStats(int Cost, int Power, int Life, CardType CardType, int Rarity, int Clan = 0);
+
+public static class MissingStats
+{
+    public static readonly CardStats Value = new(Cost: 0, Power: -1, Life: -1, CardType: default, Rarity: 0);
+}
 
 public sealed class StatsLoader
 {
@@ -44,16 +49,13 @@ public sealed class StatsLoader
     // card id to card type
     public IReadOnlyDictionary<int, CardType> Id2CardType { get; }
 
-    /// <summary>
-    /// card id to its tribe tokens, already stripped of the "TN_" prefix. A card can carry several
-    /// (card_master stores them comma-separated) and most carry none.
-    /// </summary>
+    // card id to its tribe tokens
     public IReadOnlyDictionary<int, IReadOnlyList<string>> Id2Tribes { get; }
 
-    /// <summary>every tribe token appearing in card_master, ordered by how many cards use it.</summary>
     public IReadOnlyList<string> AllTribes { get; }
 
-    // default card display order with these priorities : cost -> type -> rarity -> card id.
+    // default card display order with these priorities
+    // cost -> type(fol -> spl -> amu) -> rarity -> card id
     public IReadOnlyList<int> NormalOrder { get; }
 
     public StatsLoader(string cardMasterCsvGzPath, IEnumerable<int> cardIds)
@@ -128,8 +130,7 @@ public sealed class StatsLoader
                 if (!int.TryParse(f[CostCol], out var cost) || cost < 0)
                 {
                     continue; // some rows (leader "技巧" abilities etc.) carry a -1/-99 cost
-                              // sentinel instead of a real one - not real deck-buildable cards,
-                              // same reasoning/precedent as OpenVerse.Common.CardCostMap
+                              // sentinel instead of a real one - not real deck-buildable cards
                 }
 
                 int.TryParse(f[RarityCol], out var rarity);
