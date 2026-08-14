@@ -13,6 +13,11 @@
      <!-- PathSetupScreen -->
      <sys:String x:Key="PathSetupHeader">Please set the paths for the required files</sys:String>
      <sys:String x:Key="PathSetupMissingFilesError">The following files were not found: *</sys:String>
+     <sys:String x:Key="PathSetupRunSetupMessage">Run openverse-setup.exe to generate the files the paths above point to?</sys:String>
+     <sys:String x:Key="PathSetupRunSetupButton">Run openverse-setup.exe</sys:String>
+     <sys:String x:Key="PathSetupCloseAppButton">Close the decker</sys:String>
+     <sys:String x:Key="PathSetupSetupRunning">openverse-setup.exe started. Press Run once it finishes.</sys:String>
+     <sys:String x:Key="PathSetupSetupFailed">Could not start openverse-setup.exe: *</sys:String>
 
      <!-- InitialScreen -->
      <sys:String x:Key="InitialHeader">Select a display language</sys:String>
@@ -55,6 +60,8 @@
      <sys:String x:Key="KeywordFilterButton">Keyword filter</sys:String>
      <sys:String x:Key="TribeFilterButton">Trait filter</sys:String>
      <sys:String x:Key="CardSetFilterButton">Card pack filter</sys:String>
+     <sys:String x:Key="FormatUnlimited">Unlimited</sys:String>
+     <sys:String x:Key="FormatResurgent">Resurgent</sys:String>
 
      <!-- card pack labels, keyed by card_set_id, taken from the client's own short names. English
           uses a word per pack where Japanese uses a three-letter code, so the two locales carry

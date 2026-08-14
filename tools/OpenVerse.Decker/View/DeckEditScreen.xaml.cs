@@ -168,9 +168,11 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         {
             TypeFilterPanel.Children.Add(MakeFilterButton(FilterChild.Kind(label), label));
         }
-        foreach (var label in new[] { CardFilterCatalog.UnlimitedLabel, CardFilterCatalog.ResurgentLabel })
+
+        foreach (var token in new[] { CardFilterCatalog.UnlimitedLabel, CardFilterCatalog.ResurgentLabel })
         {
-            SpecialFilterPanel.Children.Add(MakeFilterButton(FilterChild.Format(label), label));
+            SpecialFilterPanel.Children.Add(
+                MakeFilterButton(FilterChild.Format(token), I18n.Text($"Format{token}") ?? token));
         }
         foreach (var clanId in CardFilterCatalog.ClanIds)
         {

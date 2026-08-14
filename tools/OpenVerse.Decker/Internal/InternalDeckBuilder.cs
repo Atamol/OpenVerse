@@ -11,6 +11,9 @@ public sealed class InternalDeckBuilder
     private readonly DeckStore _store;
     private readonly string _userKey;
 
+    // the launcher only pushes decks.json to a host, never the db, so saves have to land in both
+    private readonly DeckJsonMirror _deckJson = new();
+
     public static readonly IReadOnlyList<int> ValidClanIds = [1, 2, 3, 4, 5, 6, 7, 8];
 
     public TextLoader Text { get; }
@@ -75,6 +78,7 @@ public sealed class InternalDeckBuilder
         }
 
         _store.Save(deck);
+        _deckJson.Save(deck);
     }
 
     public void Delete(Deck deck)
@@ -86,5 +90,6 @@ public sealed class InternalDeckBuilder
         }
 
         _store.Delete(_userKey, deck.DeckNo);
+        _deckJson.Delete(deck);
     }
 }

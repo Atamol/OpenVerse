@@ -25,6 +25,22 @@ public class TextLoader
     };
 
     /// <summary>
+    /// Section titles for a card that evolves
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, (string Unevolved, string Evolved)> EvolutionHeaders =
+        new Dictionary<string, (string, string)>
+        {
+            ["Jpn"] = ("進化前", "進化後"),
+            ["Chs"] = ("进化前", "进化后"),
+            ["Cht"] = ("進化前", "進化後"),
+            ["Kor"] = ("진화 전", "진화 후"),
+            ["Fre"] = ("Avant l'évolution", "Après l'évolution"),
+        };
+
+    private static (string Unevolved, string Evolved) HeadersFor(string lang) =>
+        EvolutionHeaders.TryGetValue(lang, out var headers) ? headers : ("Unevolved", "Evolved");
+
+    /// <summary>
     /// language key like "Jpn" or "Eng".
     /// </summary>
     public string Lang { get; }
@@ -79,6 +95,14 @@ public class TextLoader
     // them; the occurrence floor then drops one-off flavour links such as "コキュートスカード".
     private const int MinKeywordOccurrences = 5;
 
+    /// <summary>
+    /// English marks an ability's cost up exactly like the ability - "[b]Enhance[/b] [b](8)[/b]" -
+    /// so without this every cost becomes a keyword of its own and Enhance and Accelerate end up
+    /// split across a button per cost. Japanese leaves the cost outside the markup.
+    /// </summary>
+    private static bool IsAbilityCost(string target) =>
+        target.StartsWith('(') && target.EndsWith(')');
+
     private static string[] ExtractKeywords(IEnumerable<string> rawDescriptions, IEnumerable<string> cardNames)
     {
         var names = cardNames.ToHashSet();
@@ -88,7 +112,7 @@ public class TextLoader
             foreach (var target in CardTextMarkup.ExtractHyperlinkTargets(raw))
             {
                 // length 1 drops the ":" and "s" fragments the English "[b]" markup leaves behind
-                if (target.Length > 1 && !names.Contains(target))
+                if (target.Length > 1 && !IsAbilityCost(target) && !names.Contains(target))
                 {
                     counts[target] = counts.GetValueOrDefault(target) + 1;
                 }
@@ -246,18 +270,19 @@ public class TextLoader
             return tribe.Length == 0 ? desc : $"{tribe}\n\n{desc}";
         }
 
+        var evolutionHeaders = HeadersFor(lang);
         var id2Desc = new Dictionary<int, string>();
         foreach (var (cardId, baseDesc) in baseDescByCard)
         {
-            id2Desc[cardId] = WithTribe(
-                cardId, CardTextComposer.BuildDesc(baseDesc, evoDescByCard.GetValueOrDefault(cardId)));
+            id2Desc[cardId] = WithTribe(cardId, CardTextComposer.BuildDesc(
+                baseDesc, evoDescByCard.GetValueOrDefault(cardId), evolutionHeaders));
         }
         // guard for an evo-only entry with no base counterpart - not expected in real data
         foreach (var (cardId, evoDesc) in evoDescByCard)
         {
             if (!id2Desc.ContainsKey(cardId))
             {
-                id2Desc[cardId] = WithTribe(cardId, CardTextComposer.BuildDesc(null, evoDesc));
+                id2Desc[cardId] = WithTribe(cardId, CardTextComposer.BuildDesc(null, evoDesc, evolutionHeaders));
             }
         }
 

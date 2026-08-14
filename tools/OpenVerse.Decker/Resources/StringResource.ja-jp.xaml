@@ -12,6 +12,11 @@
      <!-- PathSetupScreen -->
      <sys:String x:Key="PathSetupHeader">必要なファイルのパスを設定してください</sys:String>
      <sys:String x:Key="PathSetupMissingFilesError">次のファイルが見つかりません: *</sys:String>
+     <sys:String x:Key="PathSetupRunSetupMessage">要求されたパス先のファイルを生成するために、openverse-setup.exeの起動をしますか？</sys:String>
+     <sys:String x:Key="PathSetupRunSetupButton">openverse-setup.exeを実行</sys:String>
+     <sys:String x:Key="PathSetupCloseAppButton">deckerを閉じる</sys:String>
+     <sys:String x:Key="PathSetupSetupRunning">openverse-setup.exeを起動しました。完了したら「実行」を押してください。</sys:String>
+     <sys:String x:Key="PathSetupSetupFailed">openverse-setup.exeの起動に失敗しました: *</sys:String>
 
      <!-- InitialScreen -->
      <sys:String x:Key="InitialHeader">表示言語を選択してください</sys:String>
@@ -51,6 +56,8 @@
      <sys:String x:Key="KeywordFilterButton">キーワードフィルタ</sys:String>
      <sys:String x:Key="TribeFilterButton">タイプフィルタ</sys:String>
      <sys:String x:Key="CardSetFilterButton">カードパックフィルタ</sys:String>
+     <sys:String x:Key="FormatUnlimited">アンリミテッド</sys:String>
+     <sys:String x:Key="FormatResurgent">リサージェント</sys:String>
 
      <!-- Japanese names the packs by three-letter code where English spells a word out -->
      <sys:String x:Key="CardSet10000">ベーシック</sys:String>
