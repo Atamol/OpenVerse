@@ -91,7 +91,10 @@ public sealed class RoomHandler
             retry_period = 1,
             battle_id = room.BattleId,
             node_server_url = room.NodeServerUrl,
-            card_master_id = 0,
+            // DoMatchingBase.SettingCardMasterId hands this to the battle. Master 1 is where the unlock flattens the
+            // clan column, and 2 is untouched in either payload. Unconditional because switching off does not reload
+            // the master, so that client is still holding the flattened one until it logs in again
+            card_master_id = 2,
         });
     }
 
@@ -106,7 +109,9 @@ public sealed class RoomHandler
         var isOwner = room.OwnerUdid == udid;
         Console.WriteLine($"WriteBattleDeck udid={udid} roomId={room.RoomId} isOwner={isOwner} deckNo={deckNo} found={deck is not null} cards={deck?.CardIdArray.Length ?? 0}");
         if (deck is null) return;
-        var classId = ClassOf(deck.CardIdArray);
+        // Counting cards only guesses, and a deck that mixes classes makes the guess pick the majority, so the
+        // leader turns into a class the player never chose
+        var classId = deck.ClassId is >= 1 and <= 8 ? deck.ClassId : ClassOf(deck.CardIdArray);
         _battleDecks.Set(new BattleDeck
         {
             RoomId = room.RoomId,
@@ -123,7 +128,8 @@ public sealed class RoomHandler
         });
     }
 
-    // A card's class is its 100,000s digit (verified vs card master clan column). Deck class = most common nonzero digit
+    // Fallback only, for a deck that never recorded its class. A card's class is its 100,000s digit (verified against
+    // the card master clan column), and the deck's is the most common nonzero one
     static int ClassOf(int[] cardIds)
     {
         var digits = cardIds.Select(c => c / 100000 % 10).Where(d => d is >= 1 and <= 8).ToList();
