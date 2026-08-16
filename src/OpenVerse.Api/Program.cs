@@ -127,6 +127,8 @@ var manifestOfManifests = SynthesizeManifestOfManifests();
 var dbPath = Environment.GetEnvironmentVariable("OPENVERSE_DECK_DB")
     ?? Path.Combine(AppContext.BaseDirectory, "openverse.db");
 var deckStore = new DeckStore(dbPath);
+var unlockStore = new UnlockStore(dbPath);
+var guildHandler = new GuildHandler(unlockStore);
 List<DefaultDeckBuilder.DefaultDeck> defaultDecks = [];
 var starterSrc = Path.Combine(AppContext.BaseDirectory, "data", "starter_decks.json");
 if (File.Exists(starterSrc))
@@ -257,13 +259,25 @@ else
     cardCsv = "";
     Console.WriteLine("CardMaster: no source, serving empty CSV");
 }
+string Hash(string csv) => "openverse-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(csv)))[..12].ToLowerInvariant();
 var cardMasterPayload = CardMasterCodec.Encode(cardCsv);
-var cardMasterHash = "openverse-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(cardCsv)))[..12].ToLowerInvariant();
+var cardMasterHash = Hash(cardCsv);
+
+// The client caches the master under its hash, so the locked and unlocked hashes have to differ or a flip keeps
+// serving the copy already on disk. The payload carries two masters and every deck screen is hardwired to the
+// first, so the flattened clan goes there and the second stays real for the battle
+var editorCsv = UnlimitedUnlock.ClearClan(UnlimitedUnlock.ClearResurgent(cardCsv));
+var unlockedMasterPayload = CardMasterCodec.Encode(editorCsv, cardCsv);
+var unlockedMasterHash = Hash(editorCsv);
+var unlockedRestrictedJson = UnlimitedUnlock.RestrictedListJson(cardCsv);
+Console.WriteLine($"UnlimitedUnlock: {unlockedRestrictedJson.Split("\":").Length - 1} base cards raised to {UnlimitedUnlock.MaxCopies} copies");
 
 string userCardListJson = "[]";
+string unlockedUserCardListJson = "[]";
 if (File.Exists(realMasterGz))
 {
     userCardListJson = UserCardListBuilder.BuildFromCsv(cardCsv);
+    unlockedUserCardListJson = UserCardListBuilder.BuildFromCsv(cardCsv, UnlimitedUnlock.MaxCopies);
     Console.WriteLine($"UserCardList: granted {userCardListJson.Split("\"card_id\"").Length - 1} cards (from real master)");
 }
 else if (File.Exists(cardDataPath))
@@ -381,6 +395,17 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         return;
     }
 
+    // The editor only ever offers the deck's own class, so a mixed-class deck has to arrive as a code instead.
+    // DeckCreateMenuUI checks only that each id exists in the master
+    if (path.Equals("/openverse/deckcode", StringComparison.OrdinalIgnoreCase))
+    {
+        var (rc, minted) = deckCodeHandler.Handle(System.Text.Encoding.UTF8.GetString(body));
+        Console.WriteLine($"  -> [deckcode rc={rc}] {minted}");
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsync(minted);
+        return;
+    }
+
     if (path.Equals("/openverse.cer", StringComparison.OrdinalIgnoreCase) && certDer.Length > 0)
     {
         Console.WriteLine("  -> serving cert");
@@ -460,32 +485,57 @@ app.MapMethods("/{**path}", ["GET", "POST"], async context =>
         }
         string data;
         string handler;
+        var resultCode = 1;
         if (DeckHandler.CanHandle(p) && json is not null) { handler = "deck"; data = deckHandler.Handle(p, json, userKey); }
         else if (RoomHandler.CanHandle(p) && json is not null) { handler = "room"; data = roomHandler.Handle(p, json, userKey, context.Connection.RemoteIpAddress?.ToString() ?? ""); }
-        else if (p.Contains("immutable_data/card_master")) { handler = "card_master"; data = $"{{\"card_master\":\"{cardMasterPayload}\"}}"; }
+        else if (GuildHandler.CanHandle(p)) { handler = "guild"; (resultCode, data) = guildHandler.Handle(p, userKey); }
+        else if (p.Contains("immutable_data/card_master"))
+        {
+            handler = "card_master";
+            data = $"{{\"card_master\":\"{(unlockStore.IsOn(userKey) ? unlockedMasterPayload : cardMasterPayload)}\"}}";
+        }
         else if (p.Contains("load/index"))
         {
             handler = "stub:load_index";
+            var unlocked = unlockStore.IsOn(userKey);
             var raw = WithName(stubs.GetValueOrDefault("load_index", "{}"), userKey);
             raw = raw.Replace("\"user_sleeve_list\": []", "\"user_sleeve_list\": " + sleeveListJson);
             raw = raw.Replace("\"user_leader_skin_list\": []", "\"user_leader_skin_list\": " + leaderSkinListJson);
+            if (unlocked)
+                raw = raw.Replace("\"unlimited_restricted_base_card_id_list\": {}", "\"unlimited_restricted_base_card_id_list\": " + unlockedRestrictedJson);
             var deckGroups = deckHandler.BuildLoadIndexDeckGroups(userKey);
             var deckGroupsInner = deckGroups.Substring(1, deckGroups.Length - 2);
             // open_battle_field_id_list: without it the battle scene NREs in CalculationRandomStage at start
             const string battleFields = "[1,2,3,4,5,6,7,10,18,30,31,41,43,51,61,71]";
+            var hash = unlocked ? unlockedMasterHash : cardMasterHash;
+            var cards = unlocked ? unlockedUserCardListJson : userCardListJson;
             data = raw.TrimEnd().EndsWith("}")
-                ? raw.TrimEnd().TrimEnd('}') + $",\"card_master_hash\":\"{cardMasterHash}\",\"user_card_list\":{userCardListJson},\"open_battle_field_id_list\":{battleFields},{deckGroupsInner}}}"
+                ? raw.TrimEnd().TrimEnd('}') + $",\"card_master_hash\":\"{hash}\",\"user_card_list\":{cards},\"open_battle_field_id_list\":{battleFields},{deckGroupsInner}}}"
                 : raw;
+            // from here the running client is on this value, and the switch cannot reach it again until it comes back
+            unlockStore.MarkServed(userKey);
         }
-        else if (p.Contains("mypage/index")) { handler = "stub:mypage_index"; data = WithName(stubs.GetValueOrDefault("mypage_index", "{}"), userKey); }
+        else if (p.Contains("mypage/index"))
+        {
+            handler = "stub:mypage_index";
+            data = WithName(stubs.GetValueOrDefault("mypage_index", "{}"), userKey);
+            guildHandler.ArmFromHome(userKey);
+            // The login bonus prompt carries a back-to-title button and BackToTitle is SoftwareReset.exec, the only
+            // server-reachable way back through login, where the card master and load/index are read
+            if (unlockStore.ReloadPending(userKey) && data.TrimEnd().EndsWith("}"))
+            {
+                data = data.TrimEnd().TrimEnd('}') + ",\"can_give_daily_login_bonus\":true}";
+                Console.WriteLine("  [guild] unlock change pending, asking the client to go back to the title");
+            }
+        }
         else if (p.Contains("mypage/refresh")) { handler = "stub:mypage_refresh"; data = stubs.GetValueOrDefault("mypage_refresh", "{}"); }
         else if (p.Contains("introduce_deck/series_list")) { handler = "introduce_deck_series"; data = deckHandler.IntroduceDeckSeriesList(); }
         else if (p.Contains("introduce_deck/info")) { handler = "introduce_deck"; data = deckHandler.IntroduceDeckInfo(json ?? "{}"); }
         else if (PracticeHandler.CanHandle(p)) { handler = "practice"; data = practiceHandler.Handle(p, userKey); }
         else if (p.Contains("game_start")) { handler = "stub:game_start"; data = stubs.GetValueOrDefault("game_start", "{}"); }
         else { handler = "UNHANDLED"; data = "{}"; }
-        Console.WriteLine($"  -> [{handler}] {data.Substring(0, Math.Min(200, data.Length))}");
-        return $"{{\"data_headers\":{{\"result_code\":1,\"servertime\":{now}}},\"data\":{data}}}";
+        Console.WriteLine($"  -> [{handler} rc={resultCode}] {data.Substring(0, Math.Min(200, data.Length))}");
+        return $"{{\"data_headers\":{{\"result_code\":{resultCode},\"servertime\":{now}}},\"data\":{data}}}";
     }
 });
 
