@@ -106,7 +106,9 @@ $role = if (Test-Path $keptEngine) {
   (Get-Content $keptEngine | ForEach-Object { $_.Trim() } |
     Where-Object { $_.Length -gt 0 -and -not $_.StartsWith("#") } | Select-Object -First 1)
 } else { $null }
-if (-not $role) { $role = "AdviseCost" }
+# Below AnswerBlanks nobody answers a condition asked on the wire, so the receiver drops the skill and something
+# like a leader PP grant fires on one side only
+if (-not $role) { $role = "AnswerBlanks" }
 Set-Content -Path $engineTxt -Encoding UTF8 -Value @(
   "# Observe | AdviseCost | AnswerBlanks, least to most trusted"
   "# Replace the value below with one of those. $($keepComment.Substring(2))"

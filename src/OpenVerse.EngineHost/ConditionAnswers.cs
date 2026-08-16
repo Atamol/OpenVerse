@@ -111,11 +111,13 @@ public static class Answer
     }
 
 
+    // ClassAndInPlayCardList, not InPlayCards: the latter yields around every ClassBattleCardBase, so the leader is
+    // unreachable through it and every condition an attached ability asks at idx 0 gets declined for want of a card
     static BattleCardBase FindCard(NetworkBattleManagerBase mgr, bool isSelfPlayer, int idx)
     {
         BattlePlayerBase side = mgr.GetBattlePlayer(isSelfPlayer);
         foreach (var zone in new IEnumerable<BattleCardBase>[]
-                 { side.HandCardList, side.InPlayCards, side.DeckCardList, side.CemeteryList, side.BanishList })
+                 { side.HandCardList, side.ClassAndInPlayCardList, side.DeckCardList, side.CemeteryList, side.BanishList })
         {
             if (zone == null) continue;
             foreach (var c in zone) if (c != null && c.Index == idx) return c;
