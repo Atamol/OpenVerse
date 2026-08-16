@@ -191,6 +191,7 @@ public sealed class BattleHub
             case "SelectObject":
                 // steady-state turn traffic: ack the sender, relay to the peer on its own playSeq stream
                 if (ackId is int iBt) await s.SendAck(iBt, pubSeq);
+                NoteTurnClock(s, uri);
                 _watch.NoteRelayed(s.BattleId, $"{s.Id} {uri}{what}");
                 if (uri is "TurnEnd" or "TurnEndFinal") _watch.NoteTurnEnd(s.BattleId, s.Id, payload);
                 await RelayBattle(s, uri, payload);
@@ -650,9 +651,10 @@ public sealed class BattleHub
                     case "damage": v.Life -= n; break;
                     case "heal": v.Life += n; break;
                     case "set": v.Life = n; break;
+                    // Log only, and must stay that way: addPP arrives through Math.Abs with its sign gone, and maxPP
+                    // is a delta (OnChangePP carries PpTotal - ppTotal), so neither adds up to a PP total
                     case "addPP": v.Pp += n; break;
-                    case "usePP": v.Pp -= n; break;
-                    case "maxPP": v.MaxPp = n; break;
+                    case "maxPP": v.MaxPp += n; break;
                     case "cemetery": v.Cemetery = n; break;
                 }
             }
@@ -716,7 +718,7 @@ public sealed class BattleHub
         foreach (var dc in q)
         {
             if (!deck.Contains(dc)) continue;  // IsInDeck: a card drawn/removed before flush is skipped, consumes no RNG
-            int ci = rng.GetChangeInt(deck.Count);  // count includes the just-added card; stream advances even if we skip
+            int ci = rng.GetChangeInt(deck.Count);  // count includes the just-added card, and the stream advances on a skip
             if (ci < 0 || ci >= deck.Count) continue;  // client would throw here; skip the one swap rather than crash the relay
             var tgt = deck[ci];
             int a = dc.Index, t = tgt.Index;
@@ -1029,11 +1031,20 @@ public sealed class BattleHub
     // actor's. spin is how far, and OperateReceive burns exactly that many draws to catch up. it is forward-only and
     // was the original repair channel. The relay has never sent it, so every random effect left the two cursors apart.
     // both numbers only exist once each client has a board of its own
+    // Off because the mirrors it measures against are adrift, so the gap it reports is not a lag. Sending it costs
+    // matches: the values run into the twenties and burning that many draws wrecks the hand it was meant to line up
+    static readonly bool SpinEnabled = Environment.GetEnvironmentVariable("OPENVERSE_SPIN") == "1";
+
     void InjectSpin(Session s, JsonObject body)
     {
         if (Engine.ShadowBridge.Role < Engine.ShadowBridge.EngineRole.AnswerBlanks) return;
         if (body.ContainsKey("spin")) return;
         if (PairFor(s) is not {} sp || !sp.TrySpin(IsShadowPlayer(s), out var spin) || spin <= 0) return;
+        if (!SpinEnabled)
+        {
+            Console.WriteLine($"[{s.Id}] spin={spin} withheld{(spin > 6 ? " (and this one is far too big to be a real lag)" : "")}");
+            return;
+        }
         body["spin"] = spin;
         Console.WriteLine($"[{s.Id}] spin={spin} (the receiver is that many draws behind)");
     }
@@ -1055,6 +1066,19 @@ public sealed class BattleHub
         return cost;
     }
 
+    // Running out of turn time forces the turn closed mid-action, and the client only uploads its timer trace when
+    // some other error fires, so a play that landed on the buzzer leaves no trace of having been one
+    readonly Dictionary<string, DateTime> _turnOpened = new();
+
+    void NoteTurnClock(Session s, string uri)
+    {
+        if (uri == "TurnStart") { _turnOpened[s.Id] = DateTime.UtcNow; return; }
+        if (!_turnOpened.TryGetValue(s.Id, out var opened)) return;
+        var into = (DateTime.UtcNow - opened).TotalSeconds;
+        if (uri is "PlayActions" or "TurnEndActions" or "TurnEnd" && into >= 60)
+            Console.WriteLine($"[{s.Id}] {uri} at {into:F1}s into the turn{(into >= 85 ? " - ON THE BUZZER" : "")}");
+    }
+
     // The actor asks a condition question on the wire and never answers it. The peer's CheckCondition discards its own
     // reading and returns the (absent) injected value, so the skill silently does not fire - 169 receive-gated skills
     // are in that state. The engine plays the same match, so it answers what the acting engine asked itself.
@@ -1062,7 +1086,6 @@ public sealed class BattleHub
     // played-card exclusion is written against
     void InjectConditionAnswers(Session s, string uri, JsonObject body)
     {
-        if (Engine.ShadowBridge.Role < Engine.ShadowBridge.EngineRole.AnswerBlanks) return;
         if (uri != "PlayActions" || body["orderList"] is not JsonArray ol) return;
 
         var specs = new JsonArray();
@@ -1070,24 +1093,46 @@ public sealed class BattleHub
             if (el is JsonObject eo && eo["skillConditionCheck"] is JsonObject sc) specs.Add(sc.DeepClone());
         if (specs.Count == 0) return;
 
+        // An unanswered question behind a PP delta shows up nowhere: the peer runs a point low and starts refusing
+        // plays a card or two later, so the decline has to be said out loud here
+        var movesPp = ol.OfType<JsonObject>().Any(e => e["playerParam"] is JsonObject p
+                                                    && (p.ContainsKey("addPP") || p.ContainsKey("maxPP")));
+        var tail = movesPp ? " [this play moves PP]" : "";
+
+        if (Engine.ShadowBridge.Role < Engine.ShadowBridge.EngineRole.AnswerBlanks)
+        {
+            Console.WriteLine($"[{s.Id}] {specs.Count} skill conditions UNANSWERED, engine is {Engine.ShadowBridge.Role}{tail}");
+            return;
+        }
+
         var pIdx = AsInt(body["playIdx"]) ?? -1;
-        if (Board(s) is not {} bd2 || !bd2.TryConditionAnswers(true, pIdx, specs, out var answers)) return;
+        if (Board(s) is not {} bd2 || !bd2.TryConditionAnswers(true, pIdx, specs, out var answers))
+        {
+            Console.WriteLine($"[{s.Id}] engine answered NONE of {specs.Count} skill conditions (idx {pIdx}){tail}");
+            return;
+        }
+
+        // "do not activate" is what the peer does with no answer at all (NetworkExecutionInfoCreator returns false),
+        // so sending it changes no outcome and only puts a cardId-less entry in a list the receive path walks
+        var useful = answers.Where(a => AsInt(a?["activate"]) != 0).ToList();
+        var muted = answers.Count - useful.Count;
 
         var list = body["knownList"] as JsonArray;
         if (list is null) { list = new JsonArray(); body["knownList"] = list; }
         // each answer is its OWN entry: folded into the card-state entry, the activate/count key would reroute that
         // entry out of knownCardList and the cardId/cost it carries would be lost
-        foreach (var a in answers) list.Add(a!.DeepClone());
+        foreach (var a in useful) list.Add(a!.DeepClone());
 
         // The flag and the condition channel are mutually exclusive per card index: once any condition entry exists
         // for an index, the peer sends every condition skill on that card down the injected-answer branch and never
         // reaches the highlander flag. The engine answers check_highlander itself, so drop the now-dead flag
-        var answered = answers.Select(a => AsInt(a?["idx"])).Where(i => i is not null).ToHashSet();
+        var answered = useful.Select(a => AsInt(a?["idx"])).Where(i => i is not null).ToHashSet();
         foreach (var e in list)
             if (e is JsonObject eo2 && eo2.ContainsKey("highlander") && answered.Contains(AsInt(eo2["idx"])))
                 eo2.Remove("highlander");
 
-        Console.WriteLine($"[{s.Id}] engine answered {answers.Count} of {specs.Count} skill conditions");
+        var mutedNote = muted > 0 ? $", {muted} said do-not-activate and were left out" : "";
+        Console.WriteLine($"[{s.Id}] engine answered {answers.Count} of {specs.Count} skill conditions (idx {pIdx}){mutedNote}{tail}");
     }
 
     // The actor sends the check spec but never its result - only a server-injected knownList carries it, so without
