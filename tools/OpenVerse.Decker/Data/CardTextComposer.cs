@@ -19,12 +19,13 @@ public static class CardTextComposer
     /// 進化後<br/>
     /// <br/>
     /// (evolved description)<br/>
-    /// TODO i18n for 進化前/進化後
     /// </summary>
     /// <param name="baseDesc"></param>
     /// <param name="evoDesc"></param>
+    /// <param name="headers">
+    /// </param>
     /// <returns></returns>
-    public static string BuildDesc(string? baseDesc, string? evoDesc)
+    public static string BuildDesc(string? baseDesc, string? evoDesc, (string Unevolved, string Evolved) headers)
     {
         if (evoDesc is null)
         {
@@ -32,9 +33,9 @@ public static class CardTextComposer
         }
         if (baseDesc is null)
         {
-            return $"進化後\n\n{evoDesc}";
+            return $"{headers.Evolved}\n\n{evoDesc}";
         }
-        return $"進化前\n\n{baseDesc}\n---\n進化後\n\n{evoDesc}";
+        return $"{headers.Unevolved}\n\n{baseDesc}\n---\n{headers.Evolved}\n\n{evoDesc}";
     }
 
     /// <summary>

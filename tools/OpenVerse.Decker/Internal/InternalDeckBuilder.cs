@@ -11,12 +11,22 @@ public sealed class InternalDeckBuilder
     private readonly DeckStore _store;
     private readonly string _userKey;
 
+    // the launcher only pushes decks.json to a host, never the db, so saves have to land in both
+    private readonly DeckJsonMirror _deckJson = new();
+
     public static readonly IReadOnlyList<int> ValidClanIds = [1, 2, 3, 4, 5, 6, 7, 8];
 
     public TextLoader Text { get; }
     public StatsLoader Stats { get; }
 
     public CardFilterLoader Filters { get; } = new();
+
+    public CardSetNames CardSets { get; }
+
+    public FilterEngine FilterEngine { get; }
+
+    /// <summary>Shared so its cache and its single decode thread are shared too.</summary>
+    public CardArtworkLoader Artwork { get; } = new(AppConfig.Instance.CardBundleDirPath);
 
     public static string[] ExtractUserKeys()
     {
@@ -30,6 +40,8 @@ public sealed class InternalDeckBuilder
     {
         Text = text;
         Stats = stats;
+        CardSets = new CardSetNames(stats.Id2CardSetId.Values);
+        FilterEngine = CardFilterCatalog.Build(text, stats, Filters, CardSets);
         _store = new DeckStore(AppConfig.Instance.OpenVerseDbPath);
 
         var repo = new DeckRepository(AppConfig.Instance.OpenVerseDbPath);
@@ -66,6 +78,7 @@ public sealed class InternalDeckBuilder
         }
 
         _store.Save(deck);
+        _deckJson.Save(deck);
     }
 
     public void Delete(Deck deck)
@@ -77,5 +90,6 @@ public sealed class InternalDeckBuilder
         }
 
         _store.Delete(_userKey, deck.DeckNo);
+        _deckJson.Delete(deck);
     }
 }

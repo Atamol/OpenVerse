@@ -24,8 +24,9 @@ public class CardFilterLoaderTests
     {
         var loader = new CardFilterLoader();
 
-        // 11866 total card_master_full.csv.gz rows - 3424 in the token set (card_set_id 90000) = 8442
-        Assert.Equal(8442, loader.UnlimitedCardIds.Count);
+        // 11866 rows - 3424 token-set (card_set_id 90000) - 378 resurgent = 8064, which is 4032
+        // distinct cards once each foil/normal pair is collapsed - the client's own Unlimited count.
+        Assert.Equal(8064, loader.UnlimitedCardIds.Count);
     }
 
     [Fact]
@@ -40,20 +41,25 @@ public class CardFilterLoaderTests
     }
 
     [Fact]
-    public void ResurgentIsAlwaysASubsetOfUnlimitedCardIds()
+    public void ResurgentAndUnlimitedAreDisjointSoTheButtonsSelectSeparatePools()
     {
         var loader = new CardFilterLoader();
 
-        // both lists exclude the same token set (card_set_id 90000), so every Resurgent id is
-        // necessarily also Unlimited-legal - unlike before this exclusion was added, Resurgent
-        // membership now DOES imply Unlimited-legality
         Assert.Contains(131011020, loader.Resurgent);
-        Assert.Contains(131011020, loader.UnlimitedCardIds);
+        Assert.DoesNotContain(131011020, loader.UnlimitedCardIds);
+        Assert.DoesNotContain(loader.Resurgent, loader.UnlimitedCardIds.Contains);
 
-        Assert.All(loader.Resurgent, id => Assert.Contains(id, loader.UnlimitedCardIds));
-
-        // a token-set id that used to be a Resurgent-but-not-Unlimited example - confirms it was
-        // dropped from Resurgent entirely, not just left dangling as a token-set exception
+        // a token-set id: excluded from both, not merely shuffled from one pool into the other
         Assert.DoesNotContain(800044070, loader.Resurgent);
+        Assert.DoesNotContain(800044070, loader.UnlimitedCardIds);
+    }
+
+    [Fact]
+    public void ResurgentStillCoversEveryCardTheRawResourceListed()
+    {
+        var loader = new CardFilterLoader();
+
+        // subtracting resurgent from unlimited must not shrink Resurgent itself
+        Assert.Equal(378, loader.Resurgent.Count);
     }
 }

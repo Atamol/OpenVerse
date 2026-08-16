@@ -1,104 +1,68 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using CommunityToolkit.Mvvm.ComponentModel;
+using System.Windows.Media;
+using System.Windows.Threading;
 using OpenVerse.Common;
 using OpenVerse.Decker.Data;
 using OpenVerse.Decker.Internal;
 
 namespace OpenVerse.Decker.View;
 
-file static class MissingStats
-{
-    public static readonly CardStats Value = new(Cost: 0, Power: -1, Life: -1, CardType: default, Rarity: 0);
-}
-
-public sealed class DeckCardEntry(int cardId, string cardName, int count, CardStats stats) : ObservableObject
-{
-    public int CardId { get; } = cardId;
-    public string CardName { get; } = cardName;
-    public int Cost { get; } = stats.Cost;
-    public int Power { get; } = stats.Power;
-    public int Life { get; } = stats.Life;
-    public string TypeAbbreviation { get; } = stats.CardType.Abbreviation();
-
-    // Power/Life (and the "/" between them) are only meaningful for Followers - StatsLoader gives
-    // everything else Power == Life == -1
-    public Visibility StatsVisibility { get; } = stats.Power == -1 ? Visibility.Collapsed : Visibility.Visible;
-
-    public int Count
-    {
-        get => _count;
-        set => SetProperty(ref _count, value);
-    }
-    private int _count = count;
-}
-
-// one row in the right (candidate) list: a card that can be added to the deck.
-public sealed class CandidateCardEntry(int cardId, string cardName, CardStats stats)
-{
-    public int CardId { get; } = cardId;
-    public string CardName { get; } = cardName;
-    public int Cost { get; } = stats.Cost;
-    public int Power { get; } = stats.Power;
-    public int Life { get; } = stats.Life;
-    public string TypeAbbreviation { get; } = stats.CardType.Abbreviation();
-    public Visibility StatsVisibility { get; } = stats.Power == -1 ? Visibility.Collapsed : Visibility.Visible;
-}
-
 public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-    private static readonly (string Label, Func<int, bool> Matches)[] CostBuckets =
-    [
-        ("≦1", cost => cost <= 1),
-        ("2", cost => cost == 2),
-        ("3", cost => cost == 3),
-        ("4", cost => cost == 4),
-        ("5", cost => cost == 5),
-        ("6", cost => cost == 6),
-        ("7", cost => cost == 7),
-        ("8", cost => cost == 8),
-        ("9", cost => cost == 9),
-        ("10≦", cost => cost >= 10),
-    ];
-
-    private static readonly (string Label, CardType[] Types)[] TypeBuckets =
-    [
-        ("Fol", [CardType.Follower]),
-        ("Spl", [CardType.Spell]),
-        ("Amu", [CardType.CooltimeAmulet, CardType.PermanentAmulet]),
-    ];
+    // a drag only counts as add/remove while it stays near horizontal, so a mostly-vertical
+    // flick past a tile does not silently edit the deck.
+    private const double HorizontalDragToleranceDegrees = 30;
 
     private readonly CoreWindow _core;
     private readonly InternalDeckBuilder _builder;
     private readonly Deck _deck;
     private readonly List<int> _cardIds;
 
-    // card id -> its position in _builder.Stats.NormalOrder (Cost -> CardType -> Rarity -> Id, the
-    // same order the candidate list uses) - built once since NormalOrder itself never changes for
-    // the lifetime of this screen. Backs SortByNormalOrder below, the one place that ordering is
-    // actually applied, shared by both lists so they can never disagree on card order.
+    // card id -> NormalOrder (Cost -> CardType -> Rarity -> Id
     private readonly Dictionary<int, int> _normalOrderRank;
 
-    // selected filter-button labels (from CostBuckets/TypeBuckets above) - empty means "no
-    // restriction on this dimension", multiple selected means "OR" within that dimension
-    private readonly HashSet<string> _selectedCostBuckets = [];
-    private readonly HashSet<string> _selectedTypeBuckets = [];
+    private readonly HashSet<FilterChild> _activeFilters = [];
+    private readonly List<ToggleButton> _filterButtons = [];
+    private readonly List<(ToggleButton Opener, FilterChild[] Children)> _expandableGroups = [];
 
-    // Unlimited/Resurgent - each its own standalone on/off toggle (not a multi-select bucket group
-    // like cost/type above), backed by CardFilterLoader's embedded card-id allowlists
-    private bool _filterUnlimited;
-    private bool _filterResurgent;
+    // color for activated filter button
+    private static readonly SolidColorBrush ActiveFilterFill = Freeze(Color.FromRgb(0xBC, 0xDD, 0xEE));
 
-    public ObservableCollection<DeckCardEntry> DeckCards { get; } = [];
-    public ObservableCollection<CandidateCardEntry> CandidateCards { get; } = [];
+    // alpha on the fill, not Opacity on the border: Opacity would fade the description text with it
+    private static readonly SolidColorBrush HoverPopupFill = Freeze(Color.FromArgb(0xDD, 0xFF, 0xFF, 0xFF));
+    private static readonly SolidColorBrush HoverPopupBorder = Freeze(Color.FromArgb(0xDD, 0x80, 0x80, 0x80));
+
+    private readonly DescUserControl _hoverDesc = new(interactive: false);
+    private readonly Popup _hoverPopup;
+    private UIElement? _hoveredTile;
+
+    private static SolidColorBrush Freeze(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
+    }
+
+    // Prevent multiple dynamic filter refresh call while typing characters in search text, just call once for a cluster of inputs.
+    private readonly DispatcherTimer _searchDebounce = new() { Interval = TimeSpan.FromMilliseconds(200) };
+
+    public ObservableCollection<CardItem> DeckCards { get; } = [];
+
+    // a plain list swapped wholesale, not an ObservableCollection: rebuilding 5000+ candidates by
+    // Clear + per-item Add raises one CollectionChanged each and measured ~4x slower than rebinding.
+    public IReadOnlyList<CardItem> CandidateCards { get; private set; } = [];
+
+    // candidates keep their own CardItem alive across filter changes so a copy-count change can be
+    // pushed into the visible tile instead of rebuilding thousands of items.
+    private readonly Dictionary<int, CardItem> _candidateItems = [];
 
     public int TotalCardCount => DeckCards.Sum(e => e.Count);
 
@@ -123,13 +87,32 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
             ? deck.ClassId
             : InternalDeckBuilder.ValidClanIds[0];
 
+        _searchDebounce.Tick += (_, _) => ApplyFiltersNow();
+        CardViewUserControl.Artwork = _builder.Artwork;
+
+        _hoverPopup = BuildHoverPopup(_hoverDesc);
+        // a popup is its own top-level window, so leaving this screen would strand it on screen
+        Unloaded += (_, _) => CloseHoverPopup();
+
+        DeckGrid.AddHandler(CardViewUserControl.CardLeftClickEvent, new CardEventHandler(Card_LeftClick));
+        DeckGrid.AddHandler(CardViewUserControl.CardRightClickEvent, new CardEventHandler(DeckCard_RightClick));
+        DeckGrid.AddHandler(CardViewUserControl.CardDragCompletedEvent, new CardEventHandler(Card_DragCompleted));
+        CandidateGrid.AddHandler(CardViewUserControl.CardLeftClickEvent, new CardEventHandler(Card_LeftClick));
+        CandidateGrid.AddHandler(CardViewUserControl.CardRightClickEvent, new CardEventHandler(CandidateCard_RightClick));
+        CandidateGrid.AddHandler(CardViewUserControl.CardDragCompletedEvent, new CardEventHandler(Card_DragCompleted));
+        foreach (var grid in new[] { DeckGrid, CandidateGrid })
+        {
+            grid.AddHandler(CardViewUserControl.CardHoverEnterEvent, new CardEventHandler(Card_HoverEnter));
+            grid.AddHandler(CardViewUserControl.CardHoverLeaveEvent, new CardEventHandler(Card_HoverLeave));
+        }
+
         BuildFilterButtons();
         RefreshDeckCards();
         ApplyFilters();
     }
 
     private string DisplayName(int cardId) =>
-        CardTextMarkup.StripNotation(_builder.Text.Id2Name.GetValueOrDefault(cardId, $"#{cardId}"));
+        _builder.Text.Id2DisplayName.GetValueOrDefault(cardId, $"#{cardId}");
 
     private CardStats StatsOf(int cardId) => _builder.Stats.Id2UnevolvedStats.GetValueOrDefault(cardId, MissingStats.Value);
 
@@ -142,200 +125,374 @@ public partial class DeckEditScreen : UserControl, INotifyPropertyChanged
         _cardIds.Clear();
         _cardIds.AddRange(sorted);
 
-        DeckCards.Clear();
-        foreach (var group in _cardIds.GroupBy(id => id))
+        // id to duplication count(number of cards)
+        var copies = _cardIds.GroupBy(id => id).ToDictionary(g => g.Key, g => g.Count());
+
+        // remove visible ui from deck if its card id doesn't exist
+        for (var i = DeckCards.Count - 1; i >= 0; i--)
         {
-            DeckCards.Add(new DeckCardEntry(group.Key, DisplayName(group.Key), group.Count(), StatsOf(group.Key)));
+            if (!copies.ContainsKey(DeckCards[i].CardId))
+            {
+                DeckCards.RemoveAt(i);
+                CloseHoverPopup();
+            }
         }
+
+        var row = 0;
+        foreach (var cardId in _cardIds.Distinct())
+        {
+            if (row < DeckCards.Count && DeckCards[row].CardId == cardId)
+            {
+                // adjust number counter of visible ui in deck if number of its card is changed.
+                DeckCards[row].Count = copies[cardId];
+            }
+            else
+            {
+                // create new visible if if its card is created newly.
+                DeckCards.Insert(row, MakeCardItem(cardId, copies[cardId]));
+            }
+            row++;
+        }
+
+        SyncCandidateCounts();
         OnPropertyChanged(nameof(TotalCardCount));
     }
 
     private void BuildFilterButtons()
     {
-        foreach (var (label, _) in CostBuckets)
+        foreach (var (label, _) in CardFilterCatalog.Costs)
         {
-            CostFilterPanel.Children.Add(MakeFilterButton(label, CostFilterButton_Click));
+            CostFilterPanel.Children.Add(MakeFilterButton(FilterChild.Cost(label), label));
         }
-        foreach (var (label, _) in TypeBuckets)
+        foreach (var (label, _) in CardFilterCatalog.Kinds)
         {
-            TypeFilterPanel.Children.Add(MakeFilterButton(label, TypeFilterButton_Click));
+            TypeFilterPanel.Children.Add(MakeFilterButton(FilterChild.Kind(label), label));
         }
-        SpecialFilterPanel.Children.Add(MakeFilterButton("Unlimited", UnlimitedFilterButton_Click));
-        SpecialFilterPanel.Children.Add(MakeFilterButton("Resurgent", ResurgentFilterButton_Click));
+
+        foreach (var token in new[] { CardFilterCatalog.UnlimitedLabel, CardFilterCatalog.ResurgentLabel })
+        {
+            SpecialFilterPanel.Children.Add(
+                MakeFilterButton(FilterChild.Format(token), I18n.Text($"Format{token}") ?? token));
+        }
+        foreach (var clanId in CardFilterCatalog.ClanIds)
+        {
+            ClassFilterPanel.Children.Add(MakeFilterButton(FilterChild.Clan(clanId), I18n.Text($"Clan{clanId}")));
+        }
+        foreach (var rarity in CardFilterCatalog.Rarities)
+        {
+            RarityFilterPanel.Children.Add(MakeFilterButton(FilterChild.Rarity(rarity), I18n.Text($"Rarity{rarity}")));
+        }
+
+        AddExpandableGroup(I18n.Text("KeywordFilterButton"),
+            _builder.Text.Keywords.Select(keyword => (FilterChild.Keyword(keyword), keyword)));
+        AddExpandableGroup(I18n.Text("TribeFilterButton"),
+            _builder.Stats.AllTribes.Select(tribe => (FilterChild.Tribe(tribe), tribe)));
+        // pack labels live in StringResource: the three-letter codes sit in en-us so every language
+        // shares them, and only Basic/Prize are translated. A pack newer than the resources falls
+        // back to its set id rather than a blank button.
+        AddExpandableGroup(I18n.Text("CardSetFilterButton"),
+            _builder.CardSets.Packs.Select(setId =>
+                (FilterChild.CardSet(setId), I18n.Text($"CardSet{setId}") ?? setId.ToString())));
     }
 
-    private static ToggleButton MakeFilterButton(string label, RoutedEventHandler handler)
+    /// <summary>
+    /// Collapses a long child list behind a single button, which opens a popup holding every
+    /// child, so the filter row stays short until the user actually wants the list.
+    /// </summary>
+    private void AddExpandableGroup(string label, IEnumerable<(FilterChild Child, string Label)> children)
     {
-        var button = new ToggleButton { Content = label, Tag = label, Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(8, 2, 8, 2) };
-        button.Click += handler;
+        var list = new WrapPanel { MaxWidth = 640 };
+        var childFilters = new List<FilterChild>();
+        foreach (var (child, childLabel) in children)
+        {
+            list.Children.Add(MakeFilterButton(child, childLabel));
+            childFilters.Add(child);
+        }
+
+        var opener = new ToggleButton
+        {
+            Content = label,
+            Margin = new Thickness(0, 0, 4, 4),
+            Padding = new Thickness(8, 2, 8, 2),
+        };
+        var closer = new Button
+        {
+            Content = "▲ " + label,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(0, 3, 0, 3),
+            Margin = new Thickness(0, 0, 0, 6),
+        };
+
+        var body = new StackPanel();
+        body.Children.Add(closer);
+        body.Children.Add(new ScrollViewer
+        {
+            Content = list,
+            MaxHeight = 380,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        });
+
+        var popup = new Popup
+        {
+            PlacementTarget = opener,
+            Placement = PlacementMode.Bottom,
+            StaysOpen = false,
+            AllowsTransparency = true,
+            Child = new Border
+            {
+                Background = SystemColors.WindowBrush,
+                BorderBrush = SystemColors.ActiveBorderBrush,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(6),
+                Child = body,
+            },
+        };
+
+        var lastDismissed = DateTime.MinValue;
+        opener.Checked += (_, _) =>
+        {
+            if ((DateTime.UtcNow - lastDismissed).TotalMilliseconds < 250)
+            {
+                opener.IsChecked = false;
+                return;
+            }
+            popup.IsOpen = true;
+        };
+        opener.Unchecked += (_, _) => popup.IsOpen = false;
+        popup.Closed += (_, _) =>
+        {
+            lastDismissed = DateTime.UtcNow;
+            opener.IsChecked = false;
+        };
+        closer.Click += (_, _) => opener.IsChecked = false;
+
+        ExpandableFilterPanel.Children.Add(opener);
+        _expandableGroups.Add((opener, [.. childFilters]));
+    }
+
+    private void RefreshExpandableOpeners()
+    {
+        foreach (var (opener, children) in _expandableGroups)
+        {
+            if (children.Any(_activeFilters.Contains))
+            {
+                opener.Background = ActiveFilterFill;
+            }
+            else
+            {
+                opener.ClearValue(BackgroundProperty);
+            }
+        }
+    }
+
+    private ToggleButton MakeFilterButton(FilterChild child, string label)
+    {
+        var button = new ToggleButton
+        {
+            Content = label,
+            Tag = child,
+            Margin = new Thickness(0, 0, 4, 4),
+            Padding = new Thickness(8, 2, 8, 2),
+        };
+        button.Click += FilterButton_Click;
+        _filterButtons.Add(button);
         return button;
     }
 
-    private void CostFilterButton_Click(object sender, RoutedEventArgs e) => ToggleBucket(sender, _selectedCostBuckets);
-    private void TypeFilterButton_Click(object sender, RoutedEventArgs e) => ToggleBucket(sender, _selectedTypeBuckets);
-
-    private void ToggleBucket(object sender, HashSet<string> selected)
+    private void FilterButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not ToggleButton { Tag: string key } button)
+        if (sender is not ToggleButton { Tag: FilterChild child } button)
         {
             return;
         }
         if (button.IsChecked == true)
         {
-            selected.Add(key);
+            _activeFilters.Add(child);
         }
         else
         {
-            selected.Remove(key);
+            _activeFilters.Remove(child);
         }
-        ApplyFilters();
-    }
-
-    private void UnlimitedFilterButton_Click(object sender, RoutedEventArgs e) => ToggleFlag(sender, ref _filterUnlimited);
-    private void ResurgentFilterButton_Click(object sender, RoutedEventArgs e) => ToggleFlag(sender, ref _filterResurgent);
-
-    private void ToggleFlag(object sender, ref bool flag)
-    {
-        if (sender is not ToggleButton button)
-        {
-            return;
-        }
-        flag = button.IsChecked == true;
-        ApplyFilters();
+        ApplyFiltersNow();
     }
 
     private void ClearFilters_Click(object sender, RoutedEventArgs e)
     {
-        _selectedCostBuckets.Clear();
-        _selectedTypeBuckets.Clear();
-        _filterUnlimited = false;
-        _filterResurgent = false;
-        foreach (var button in CostFilterPanel.Children.OfType<ToggleButton>())
-        {
-            button.IsChecked = false;
-        }
-        foreach (var button in TypeFilterPanel.Children.OfType<ToggleButton>())
-        {
-            button.IsChecked = false;
-        }
-        foreach (var button in SpecialFilterPanel.Children.OfType<ToggleButton>())
+        _activeFilters.Clear();
+        foreach (var button in _filterButtons)
         {
             button.IsChecked = false;
         }
         SearchBox.Text = string.Empty;
-        ApplyFilters();
-    }
-
-    private Func<int, bool>[] BuildFilters()
-    {
-        var filters = new List<Func<int, bool>>();
-
-        var terms = SearchBox.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        foreach (var term in terms)
-        {
-            filters.Add(id =>
-                (_builder.Text.Id2RawFullDesc.TryGetValue(id, out var full) &&
-                    full.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
-                (_builder.Text.Id2Name.TryGetValue(id, out var name) &&
-                    name.Contains(term, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        if (_selectedCostBuckets.Count > 0)
-        {
-            var active = CostBuckets.Where(b => _selectedCostBuckets.Contains(b.Label)).ToArray();
-            filters.Add(id => _builder.Stats.Id2UnevolvedStats.TryGetValue(id, out var s) &&
-                active.Any(b => b.Matches(s.Cost)));
-        }
-
-        if (_selectedTypeBuckets.Count > 0)
-        {
-            var activeTypes = TypeBuckets.Where(b => _selectedTypeBuckets.Contains(b.Label))
-                .SelectMany(b => b.Types).ToHashSet();
-            filters.Add(id => _builder.Stats.Id2CardType.TryGetValue(id, out var t) && activeTypes.Contains(t));
-        }
-
-        if (_filterUnlimited)
-        {
-            filters.Add(id => _builder.Filters.UnlimitedCardIds.Contains(id));
-        }
-
-        if (_filterResurgent)
-        {
-            filters.Add(id => _builder.Filters.Resurgent.Contains(id));
-        }
-
-        return filters.ToArray();
+        ApplyFiltersNow();
     }
 
     private void ApplyFilters()
     {
-        var filters = BuildFilters();
-        var filteredIds = new List<int>();
-
-        foreach (var cardId in _builder.Stats.NormalOrder)
+        var active = new HashSet<FilterChild>(_activeFilters);
+        if (SearchBox.Text.Length > 0)
         {
-            var passesAll = true;
-            foreach (var filter in filters)
-            {
-                if (filter(cardId))
-                {
-                    continue;
-                }
-                passesAll = false;
-                break;
-            }
-            if (passesAll)
-            {
-                filteredIds.Add(cardId);
-            }
+            active.Add(FilterChild.SearchText);
         }
 
-        CandidateCards.Clear();
-        foreach (var cardId in SortByNormalOrder(filteredIds))
+        RefreshExpandableOpeners();
+
+        var arguments = new Dictionary<FilterChild, object?> { [FilterChild.SearchText] = SearchBox.Text };
+        var filteredIds = _builder.FilterEngine.Apply(_builder.Stats.NormalOrder, active, arguments);
+
+        CandidateCards = [.. filteredIds.Select(CandidateItem)];
+        OnPropertyChanged(nameof(CandidateCards));
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        SearchClearButton.Visibility = SearchBox.Text.Length > 0 ? Visibility.Visible : Visibility.Hidden;
+        _searchDebounce.Stop();
+        _searchDebounce.Start();
+    }
+
+    private void SearchClear_Click(object sender, RoutedEventArgs e)
+    {
+        SearchBox.Clear();
+        SearchBox.Focus();
+        ApplyFiltersNow();
+    }
+
+    private void SearchBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e) => SearchBox.SelectAll();
+
+    /// <summary>
+    /// Clicking an unfocused box would place the caret and drop the selection that
+    /// <see cref="SearchBox_GotKeyboardFocus"/> just made, so the first click only takes focus.
+    /// </summary>
+    private void SearchBox_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!SearchBox.IsKeyboardFocusWithin)
         {
-            CandidateCards.Add(new CandidateCardEntry(cardId, DisplayName(cardId), StatsOf(cardId)));
+            e.Handled = true;
+            SearchBox.Focus();
         }
     }
 
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFilters();
-
-    private void DeckCardRow_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void ApplyFiltersNow()
     {
-        if (sender is not FrameworkElement { DataContext: DeckCardEntry entry })
-        {
-            return;
-        }
-        _core.ShowFocused(new DescUserControl(_builder.Text, _builder.Stats, entry.CardId));
+        _searchDebounce.Stop();
+        ApplyFilters();
     }
 
-    private void DeckCardRow_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    private CardItem MakeCardItem(int cardId, int count) => new(
+        cardId,
+        DisplayName(cardId),
+        StatsOf(cardId),
+        _builder.Stats.Id2Tribes.GetValueOrDefault(cardId, []),
+        count);
+
+    private CardItem CandidateItem(int cardId)
     {
-        if (sender is not FrameworkElement { DataContext: DeckCardEntry entry })
+        if (!_candidateItems.TryGetValue(cardId, out var item))
+        {
+            item = MakeCardItem(cardId, CopiesOf(cardId));
+            _candidateItems[cardId] = item;
+        }
+        return item;
+    }
+
+    private int CopiesOf(int cardId) => _cardIds.Count(id => id == cardId);
+
+    private void SyncCandidateCounts()
+    {
+        foreach (var (cardId, item) in _candidateItems)
+        {
+            item.Count = CopiesOf(cardId);
+        }
+    }
+
+    /// <summary>
+    /// Anchored to the tile rather than the cursor, and never hit-testable: a popup that took the
+    /// mouse would raise MouseLeave on the tile under it and flicker itself shut.
+    /// </summary>
+    private static Popup BuildHoverPopup(DescUserControl desc) => new()
+    {
+        Placement = PlacementMode.Right,
+        AllowsTransparency = true,
+        IsHitTestVisible = false,
+        Child = new Border
+        {
+            IsHitTestVisible = false,
+            Background = HoverPopupFill,
+            BorderBrush = HoverPopupBorder,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(12),
+            Child = desc,
+        },
+    };
+
+    private void Card_HoverEnter(object sender, CardRoutedEventArgs e)
+    {
+        // OriginalSource, not Source: an ItemsControl re-sources events coming from its item
+        // containers to itself, which would anchor the popup to the whole grid instead of the card
+        if (e.OriginalSource is not UIElement tile)
         {
             return;
         }
+        _hoveredTile = tile;
+        _hoverDesc.ShowCard(_builder.Text, _builder.Stats, e.Card.CardId);
+        _hoverPopup.PlacementTarget = tile;
+        _hoverPopup.IsOpen = true;
+    }
 
-        _cardIds.Remove(entry.CardId); // removes only the first matching instance, i.e. one copy
+    private void Card_HoverLeave(object sender, CardRoutedEventArgs e)
+    {
+        if (ReferenceEquals(_hoveredTile, e.OriginalSource))
+        {
+            CloseHoverPopup();
+        }
+    }
+
+    private void CloseHoverPopup()
+    {
+        _hoveredTile = null;
+        _hoverPopup.IsOpen = false;
+    }
+
+    private void Card_LeftClick(object sender, CardRoutedEventArgs e)
+    {
+        CloseHoverPopup();
+        _core.ShowFocused(new DescUserControl(_builder.Text, _builder.Stats, e.Card.CardId));
+    }
+
+    private void DeckCard_RightClick(object sender, CardRoutedEventArgs e) => RemoveCopy(e.Card.CardId);
+
+    private void CandidateCard_RightClick(object sender, CardRoutedEventArgs e) => AddCopy(e.Card.CardId);
+
+    /// <summary>Left adds a copy and right removes one, as long as the drag stayed near horizontal.</summary>
+    private void Card_DragCompleted(object sender, CardRoutedEventArgs e)
+    {
+        var degrees = Math.Abs(Math.Atan2(e.Direction.Y, e.Direction.X) * 180 / Math.PI);
+        var pointsRight = degrees <= HorizontalDragToleranceDegrees;
+        var pointsLeft = degrees >= 180 - HorizontalDragToleranceDegrees;
+
+        if (pointsLeft)
+        {
+            AddCopy(e.Card.CardId);
+        }
+        else if (pointsRight)
+        {
+            RemoveCopy(e.Card.CardId);
+        }
+    }
+
+    private void AddCopy(int cardId)
+    {
+        _cardIds.Add(cardId);
         RefreshDeckCards();
     }
 
-    private void CandidateRow_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void RemoveCopy(int cardId)
     {
-        if (sender is not FrameworkElement { DataContext: CandidateCardEntry entry })
-        {
-            return;
-        }
-        _core.ShowFocused(new DescUserControl(_builder.Text, _builder.Stats, entry.CardId));
-    }
-
-    private void CandidateRow_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement { DataContext: CandidateCardEntry entry })
-        {
-            return;
-        }
-
-        _cardIds.Add(entry.CardId);
+        // Remove drops one instance, and a card that is not in the deck is simply left alone
+        _cardIds.Remove(cardId);
         RefreshDeckCards();
     }
 

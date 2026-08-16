@@ -8,17 +8,30 @@ namespace OpenVerse.Decker.View;
 
 public partial class DescUserControl : UserControl
 {
-    // "ffcd45" is the game's active-keyword gold - readable on the client's own dark UI, but too
-    // low-contrast on this control's white background. Remapped to this resource-defined brush at
-    // render time only; the underlying data (Id2Desc/Id2AdditionalDesc) keeps the original game
-    // hex unchanged - see ResolveColor.
+    // from hyperlink bbcode color to readable color code for decker ui
     private const string LowContrastKeywordHex = "ffcd45";
 
-    public DescUserControl(TextLoader text, StatsLoader stats, int cardId)
+    private readonly bool _interactive;
+
+    /// <summary>
+    /// this is used for non interactive description, which has no hyperlinks.
+    /// </summary>
+    /// <param name="interactive"></param>
+    public DescUserControl(bool interactive)
     {
         InitializeComponent();
+        _interactive = interactive;
+    }
+
+    public DescUserControl(TextLoader text, StatsLoader stats, int cardId) : this(interactive: true) =>
+        ShowCard(text, stats, cardId);
+
+    /// <summary>Re-points the panel at another card, so one instance can serve every hovered tile.</summary>
+    public void ShowCard(TextLoader text, StatsLoader stats, int cardId)
+    {
         RenderTitle(stats, cardId);
         Render(text, cardId);
+        AdditionalBorder.Visibility = Visibility.Collapsed;
     }
 
     private void RenderTitle(StatsLoader stats, int cardId)
@@ -43,8 +56,8 @@ public partial class DescUserControl : UserControl
 
         DescText.Inlines.Clear();
         var desc = text.Id2Desc.GetValueOrDefault(cardId, "");
-        // this panel is interactive - hyperlink-tagged segments become clickable
-        AppendSegments(DescText.Inlines, desc, makeClickable: true, () => ShowAdditional(text, cardId));
+        // hyperlink-tagged segments become clickable only where a references panel makes sense
+        AppendSegments(DescText.Inlines, desc, _interactive, () => ShowAdditional(text, cardId));
     }
 
     private void ShowAdditional(TextLoader text, int cardId)
@@ -91,9 +104,7 @@ public partial class DescUserControl : UserControl
         }
     }
 
-    // converts a raw game hex color to a display Brush - a UI-only concern, so the substitution
-    // happens here rather than touching the data the color code came from (Id2Desc/
-    // Id2AdditionalDesc keep the game's original "ffcd45"/"c8c8b0ff"/etc. untouched)
+    // converts a raw game hex color to a display Brush
     private static Brush ResolveColor(string hex)
     {
         if (hex.Equals(LowContrastKeywordHex, StringComparison.OrdinalIgnoreCase) &&
@@ -102,9 +113,7 @@ public partial class DescUserControl : UserControl
             return brush;
         }
 
-        // the game's 8-digit hex is RRGGBBAA (alpha LAST, e.g. "c8c8b0ff") - WPF's ColorConverter
-        // expects "#AARRGGBB" (alpha FIRST), so the alpha byte has to move to the front first or
-        // the channels come out scrambled
+        // convert RRGGBBAA in game to AARRGGBB in WPF
         var wpfHex = hex.Length == 8 ? hex[6..] + hex[..6] : hex;
 
         return ColorConverter.ConvertFromString($"#{wpfHex}") is Color color

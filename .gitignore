@@ -28,6 +28,7 @@ tests/Shadowverse/
 src/OpenVerse.Engine/lib/
 graphify-out/
 
+decks.json
 openverse.cer
 openverse-setup.exe
 openverse-launcher.exe

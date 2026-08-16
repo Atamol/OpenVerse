@@ -25,6 +25,22 @@ public class TextLoader
     };
 
     /// <summary>
+    /// Section titles for a card that evolves
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, (string Unevolved, string Evolved)> EvolutionHeaders =
+        new Dictionary<string, (string, string)>
+        {
+            ["Jpn"] = ("進化前", "進化後"),
+            ["Chs"] = ("进化前", "进化后"),
+            ["Cht"] = ("進化前", "進化後"),
+            ["Kor"] = ("진화 전", "진화 후"),
+            ["Fre"] = ("Avant l'évolution", "Après l'évolution"),
+        };
+
+    private static (string Unevolved, string Evolved) HeadersFor(string lang) =>
+        EvolutionHeaders.TryGetValue(lang, out var headers) ? headers : ("Unevolved", "Evolved");
+
+    /// <summary>
     /// language key like "Jpn" or "Eng".
     /// </summary>
     public string Lang { get; }
@@ -46,7 +62,7 @@ public class TextLoader
     public IReadOnlyDictionary<int, string> Id2Desc { get; }
 
     /// <summary>
-    /// card id to searchable full description for a card include its hyperlinked cards and effects.<br/>
+    /// card id to searchable full description for a card include its hyperlinked cards and effects and names.<br/>
     /// used to build the search blob for decker tool's search utility.
     /// </summary>
     public IReadOnlyDictionary<int, string> Id2RawFullDesc { get; }
@@ -55,6 +71,59 @@ public class TextLoader
     /// card id to displayable description for a card used when some hyperlink in the card's own description is cliked to show additional cards or effects' info.
     /// </summary>
     public IReadOnlyDictionary<int, string> Id2AdditionalDesc { get; }
+
+    /// <summary>
+    /// card id to markup-stripped card name, computed once here because StripNotation is
+    /// regex-driven and the card list would otherwise re-run it on every filter change.
+    /// </summary>
+    public IReadOnlyDictionary<int, string> Id2DisplayName { get; }
+
+    /// <summary>
+    /// keyword abilities of this language (Fanfare, Ward, ...), most used first. Taken from the
+    /// keyword markup in the descriptions and minus anything that resolves to a card name, so it
+    /// needs no hand-written per-language table.
+    /// </summary>
+    public IReadOnlyList<string> Keywords { get; }
+
+    /// <summary>
+    /// card id to lowercased name + full description, so search can use StringComparison.Ordinal.
+    /// OrdinalIgnoreCase re-folds the whole corpus per keystroke and measured ~20x slower.
+    /// </summary>
+    public IReadOnlyDictionary<int, string> Id2SearchText { get; }
+
+    // a keyword is marked up exactly like a card reference, so the card names are what separates
+    // them; the occurrence floor then drops one-off flavour links such as "コキュートスカード".
+    private const int MinKeywordOccurrences = 5;
+
+    /// <summary>
+    /// English marks an ability's cost up exactly like the ability - "[b]Enhance[/b] [b](8)[/b]" -
+    /// so without this every cost becomes a keyword of its own and Enhance and Accelerate end up
+    /// split across a button per cost. Japanese leaves the cost outside the markup.
+    /// </summary>
+    private static bool IsAbilityCost(string target) =>
+        target.StartsWith('(') && target.EndsWith(')');
+
+    private static string[] ExtractKeywords(IEnumerable<string> rawDescriptions, IEnumerable<string> cardNames)
+    {
+        var names = cardNames.ToHashSet();
+        var counts = new Dictionary<string, int>();
+        foreach (var raw in rawDescriptions)
+        {
+            foreach (var target in CardTextMarkup.ExtractHyperlinkTargets(raw))
+            {
+                // length 1 drops the ":" and "s" fragments the English "[b]" markup leaves behind
+                if (target.Length > 1 && !IsAbilityCost(target) && !names.Contains(target))
+                {
+                    counts[target] = counts.GetValueOrDefault(target) + 1;
+                }
+            }
+        }
+        return counts
+            .Where(pair => pair.Value >= MinKeywordOccurrences)
+            .OrderByDescending(pair => pair.Value)
+            .Select(pair => pair.Key)
+            .ToArray();
+    }
 
     // reads textlangs.json (written by OpenVerse.Setup/Program.cs) and returns the language keys
     // stored in it (e.g. ["Jpn", "Eng"]).
@@ -166,27 +235,12 @@ public class TextLoader
             }
         }
 
-        var id2Desc = new Dictionary<int, string>();
-        foreach (var (cardId, baseDesc) in baseDescByCard)
+        var id2Stats = new Dictionary<int, CardStats>();
+        var id2Tribes = new Dictionary<int, IReadOnlyList<string>>();
+        if (cardMasterCsvGzPath is not null)
         {
-            id2Desc[cardId] = CardTextComposer.BuildDesc(baseDesc, evoDescByCard.GetValueOrDefault(cardId));
+            (id2Stats, id2Tribes) = StatsLoader.LoadUnevolvedStatsAndTribes(cardMasterCsvGzPath);
         }
-        // guard for an evo-only entry with no base counterpart - not expected in real data
-        foreach (var (cardId, evoDesc) in evoDescByCard)
-        {
-            if (!id2Desc.ContainsKey(cardId))
-            {
-                id2Desc[cardId] = CardTextComposer.BuildDesc(null, evoDesc);
-            }
-        }
-
-        Id2Name = id2Name;
-        RawName2Id = rawName2Id;
-        Id2Desc = id2Desc;
-
-        var id2Stats = cardMasterCsvGzPath is null
-            ? new Dictionary<int, CardStats>()
-            : StatsLoader.LoadUnevolvedStats(cardMasterCsvGzPath);
 
         // "{Type} {Cost}" for non-Followers, "{Type} {Cost} {Power}/{Life}" for Followers - same
         // -1-means-hide-stats convention as StatsLoader/DeckEditScreen/DescUserControl. Empty
@@ -200,6 +254,41 @@ public class TextLoader
             var abbrev = s.CardType.Abbreviation();
             return s.Power == -1 ? $"{abbrev} {s.Cost}" : $"{abbrev} {s.Cost} {s.Power}/{s.Life}";
         }
+
+        string TribeTextOf(int cardId) =>
+            id2Tribes.TryGetValue(cardId, out var t) ? string.Join(' ', t) : string.Empty;
+
+        // type/cost/stats and tribe as plain searchable text, so "Fol", "5/5" or "機械" all match
+        string FactsOf(int cardId) => $"{StatsTextOf(cardId)} {TribeTextOf(cardId)}".Trim();
+
+        // the tribe leads the card's own text. DescUserControl's title row carries type/cost/stats
+        // but not this, and a referenced card's panel inherits it for free because Id2AdditionalDesc
+        // pastes in the referenced card's Id2Desc.
+        string WithTribe(int cardId, string desc)
+        {
+            var tribe = TribeTextOf(cardId);
+            return tribe.Length == 0 ? desc : $"{tribe}\n\n{desc}";
+        }
+
+        var evolutionHeaders = HeadersFor(lang);
+        var id2Desc = new Dictionary<int, string>();
+        foreach (var (cardId, baseDesc) in baseDescByCard)
+        {
+            id2Desc[cardId] = WithTribe(cardId, CardTextComposer.BuildDesc(
+                baseDesc, evoDescByCard.GetValueOrDefault(cardId), evolutionHeaders));
+        }
+        // guard for an evo-only entry with no base counterpart - not expected in real data
+        foreach (var (cardId, evoDesc) in evoDescByCard)
+        {
+            if (!id2Desc.ContainsKey(cardId))
+            {
+                id2Desc[cardId] = WithTribe(cardId, CardTextComposer.BuildDesc(null, evoDesc, evolutionHeaders));
+            }
+        }
+
+        Id2Name = id2Name;
+        RawName2Id = rawName2Id;
+        Id2Desc = id2Desc;
 
         // strips a known filler PREFIX (if present) rather than discarding the whole string, so
         // any real text appended after it (e.g. a "treated as X" nickname annotation) survives
@@ -222,9 +311,11 @@ public class TextLoader
                 .Select(StripEvolutionFiller)
                 .Where(d => d.Length > 0));
 
+        // the referenced card's own facts ride along in its description, so a card is findable by
+        // the stats and tribe of what it summons as well as by its own
         (string Name, string Desc)? ResolveCardRaw(string rawName) =>
             rawName2Id.TryGetValue(rawName, out var refId) && id2Name.TryGetValue(refId, out var refName)
-                ? (refName, RawDescOf(refId))
+                ? (refName, $"{RawDescOf(refId)} {FactsOf(refId)}".Trim())
                 : null;
 
         (string Name, string Desc, string StatsText)? ResolveCard(string rawName) =>
@@ -237,12 +328,23 @@ public class TextLoader
         foreach (var (cardId, name) in id2Name)
         {
             // effect 2 descriptions is not defined yet.
-            id2RawFullDesc[cardId] = CardTextComposer.BuildRawFullDesc(name, RawDescOf(cardId), ResolveCardRaw);
+            var full = CardTextComposer.BuildRawFullDesc(name, RawDescOf(cardId), ResolveCardRaw);
+            var ownFacts = FactsOf(cardId);
+            id2RawFullDesc[cardId] = ownFacts.Length == 0 ? full : $"{full} {ownFacts}";
             id2AdditionalDesc[cardId] = CardTextComposer.BuildAdditionalDesc(
                 name, id2Desc.GetValueOrDefault(cardId, string.Empty), ResolveCard);
         }
 
         Id2RawFullDesc = id2RawFullDesc;
         Id2AdditionalDesc = id2AdditionalDesc;
+
+        Id2DisplayName = id2Name.ToDictionary(
+            pair => pair.Key,
+            pair => CardTextMarkup.StripNotation(pair.Value));
+        Id2SearchText = id2Name.ToDictionary(
+            pair => pair.Key,
+            pair => $"{pair.Value} {id2RawFullDesc.GetValueOrDefault(pair.Key, string.Empty)}".ToLowerInvariant());
+
+        Keywords = ExtractKeywords(baseDescByCard.Values.Concat(evoDescByCard.Values), rawName2Id.Keys);
     }
 }
