@@ -50,7 +50,7 @@ The PvP relay passes a client's messages straight to the peer, but the values th
 
 There are two engines per room. A client re-simulates what it receives rather than displaying it, so without a model of each client's view separately there is no way to compute `spin` or to run the receive check.
 
-`OPENVERSE_ENGINE_ROLE` raises how far the engine is trusted, in stages (`Observe` → `AdviseCost` → `AnswerBlanks` → `DecideResult`). It ships on `AdviseCost`, and `DecideResult` is not implemented. [desync.md](desync.md) has the investigation and the limits that remain.
+`release/server/engine.txt` raises how far the engine is trusted, in stages (`Observe` → `AdviseCost` → `AnswerBlanks`), and ships on `AnswerBlanks`. Below that no condition answers are injected, so something like a PP grant attached to the leader fires on one side only. [desync.md](desync.md) has the investigation and what is still open.
 
 ## Distribution
 

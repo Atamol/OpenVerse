@@ -6,168 +6,160 @@
 
 In PvP the two clients each compute the match independently, and the server only hands one client's messages to the other without computing the match itself. So when the result the acting side computed and the result the receiving side recomputed disagree, every board state after that point belongs to a different match, which is the desync.
 
-For example:
-
 - a card played and paid for never appears on the opponent's screen
 - a follower is destroyed on one screen and survives on the other
-- an attack on the opponent's leader takes life off on your screen while the opponent never sees the attack at all
+- the attacking side sees the opponent's leader lose life while the opponent never sees the attack
 - life or PP totals do not match
 
-Nothing shows up as an error in the game, and a player usually notices at some later point, so telling these apart by eye is hard.
+The game shows no error and a player only notices later, so watching for it is no use.
 
 Below, the relay is this server, the actor is the client whose message it is, and the receiver is the client being handed that message.
 
 ## Cause
 
-In PvP the client has no model of the opponent's deck. There is a method that installs a real opponent deck, but only the replay loader calls it and it never runs during a match (`SetOppoDeck`). So during a match the opponent's deck comes back as 40 copies of a dummy card.
+The client has no model of the opponent's deck. There is a method that installs one, but only the replay loader calls it, so during a match the opponent's deck comes back as 40 copies of a dummy card (`SetOppoDeck`).
 
-Which card the opponent holds, and its cost, stats, counters and tribe, are values the original server computed the match to produce and then wrote. The relay does not compute a match, so it cannot write them.
+Which card the opponent holds, and its cost, stats, counters and tribe, are values the original server computed the match to produce, and a relay that does not compute a match cannot write them.
 
-That leaves some of what is needed off the wire:
+So what is needed never reaches the wire:
 
 - cost reductions (for example `NetworkSkill_cost_change.IsSend`) return false for as long as the affected card is in hand
-- the actor's resolution record (`orderList`) is read nowhere in the 607k-line client (one write, no reads)
-- around eighteen of the fields the receiver accepts have no writer under any spelling
+- the actor's resolution record (`orderList`) is read nowhere in the client
+- some of the fields the receiver accepts have no writer under any spelling
 
-Saying nothing about cost is not neutral. The receiver only installs a modifier when the value is stated, so with nothing stated it bills the base cost. It subtracts its own PP, so it eventually refuses a whole play for lack of PP, and checks like whether an attack is legal fail after that. The log keeps `IsPlayCard PPover` and `ConductError`.
+The receiver only installs a modifier when the value is stated, so staying quiet about a cost bills the base one. It subtracts its own PP, so it eventually refuses a whole play for lack of PP, and checks like whether an attack is legal fail after that. The log keeps `IsPlayCard PPover` and `ConductError`.
 
 ### Why practice never desyncs
 
-Practice is built on a different battle type from network play and cannot reach the receive path at all (`BattleType.Practice`). It emits no messages either, so it produces no output a PvP implementation could work from.
+Practice is built on a different battle type from network play and cannot reach the receive path at all (`BattleType.Practice`). It does no networking either, so it produces no output the relay could be modelled on.
 
-What it does give is an operation record that writes both players' plays with the effective cost (`SingleBattleOperationRecorder`). Without modifying the client and without a second player, that yields the correct value for the cost the relay currently guesses.
+Its operation record does hold both players' plays with the effective cost attached (`SingleBattleOperationRecorder`). That is ground truth for the cost the relay is guessing at, with no client modification and no second player.
 
 ## Plan
 
-The client's own battle engine runs headless alongside the match, one per client, both held by the server. The rest of this doc calls one a mirror, which is what the code calls it too (`MirrorPair` / `ShadowMirror`). The relay no longer has to assemble the values, and what it tells the peer is read straight off that client's mirror.
+The client's own battle engine runs headless on the server, playing the same match alongside it. No screen, just a copy of the client that holds a board. The rest of this doc calls one a mirror, which is what the code calls it too (`MirrorPair` / `ShadowMirror`).
+
+What the relay needs to know is what things look like in a given client's hands, so there is one mirror per client, and what to tell the peer is read off that client's mirror.
 
 Why one is not enough:
 
-- there is a second random stream advanced only by its owner's effects, drawn without touching the shared counter (`_stableRandomOnlySelf`). One per client by construction
-- `spin` is the actor's draws minus that receiver's re-simulation draws, so the receiver's side has to be reproduced to get it
-- the receive check looks at a fixed side of the board, so it only means anything on a correctly oriented mirror
+- a second random stream advances only on its owner's effects and draws without touching the shared counter (`_stableRandomOnlySelf`), one per client by construction
+- the receive check reads the opponent's board at a fixed side, so it only means anything on a correctly oriented mirror
+- `spin` below comes from what the actor and the receiver each consumed, so both sides have to be reproduced to compute it
 
 ### Why `SetDeckMirror` is off
 
-Setting it marks the mulligan as finished, which turns `ShadowReconciler`'s return-to-deck path into draws that never happened. The two are simply mutually exclusive, and the mirror side is not the broken half, so once the server owns dealing `ShadowReconciler` becomes unnecessary and this can be turned on.
+Setting it counts as the end of the mulligan, and `ShadowReconciler`'s path back into the deck then reads as draws that never happened. The two are simply exclusive: once the server deals, `ShadowReconciler` is unnecessary and this can go on.
 
-## What "done" means
+## Target
 
-The official servers are dead so there is nothing to diff against, but the check itself ships inside the client. It tests a received message against the receiver's board: is the action card there, is the attack legal, was the played card in hand (`OperateReceiveChecker`). That is Cygames' own definition of a desync, and on failure the message is discarded and `ConductError` is written to the log.
+The official server is gone, so there is no record to check against, but the check itself ships inside the client. It tests a received message against the receiver's board: whether the acting card is there, whether the attack is legal, whether the played card is in hand (`OperateReceiveChecker`). That is Cygames' own definition of a desync, and failing it drops the message and leaves a `ConductError` in the log.
 
-Success is five counters going to zero.
+Done is these five at zero.
 
-| | Metric |
-| --- | --- |
-| O1 | ConductError count |
-| O2 | board diff between the two mirrors, including the random cursor |
-| O3 | unresolved publish counts (3 of 5 on the current capture) |
-| O4 | (opcode, timing) pairs not yet exercised, out of 683 |
-| O5 | undrained vfx queues |
+- ConductErrors raised
+- board diff between the two mirrors, random cursor included
+- publish counts that cannot be resolved
+- (opcode, timing) pairs never exercised
+- unprocessed vfx queue
 
-## Limits
-
-- Values the server decides. `spin`, what to tell the peer about a card, and condition answers are parsed by the client and never written by it. The format is specified, what to put in them is not recorded anywhere, so that part is design rather than reproduction
-- The engine is a reconstruction built from 607k decompiled lines by a compiler Cygames did not use. An IL diff narrows the difference but cannot reduce it to zero. Pin one engine build and ship its hash so two hosts cannot differ without noticing
-- Guarded constructors skip their whole body on a null asset, so if any hides a state mutation the mirror skips it too. Chasing exceptions does not surface it
+ConductErrors are measured by the client itself. It uploads its own log to the server with the reason attached, so the relay pulls those out and prints them with a running count.
 
 ## Implementation
 
-**Which side is the owner**: connect order does not decide it. The client rebuilds the battle socket per game, so game 2 onward is a reconnect race between two remote players, and getting it backwards swaps both the deck and the score. The sender of the room-creation message is the owner and the sender of the entry message is the visitor, so either one settles both (`RoomCreate` / `RoomEntry`).
+### Which side is owner
 
-**Mode flags**: without telling the engine this is a network battle it takes the solo-battle branch and draws from a local RNG neither client drew from (`GameMgr.IsNetworkBattle` and friends).
+Not the connection order. The client reopens its socket per match, so the second match onward is a reconnect race, and getting it wrong swaps both decks and both records. The sender of the room-create message is the owner and the enterer is the visitor, so either one settles both (`RoomCreate` / `RoomEntry`).
 
-**Comparing the boards**: for each pair of the actor's turn end and the receiver's reply (a boundary from here on), the three board hashes each client sends are compared (`ConsistencyWatch`). On a mismatch it logs which third broke and nothing else, for now.
+### Seating
 
-The shipped capture breaks at boundaries 9-11. It is itself a match that desynced without anyone noticing, and the play `ShadowCostFidelityTests` prices sits on the board after the break, so it is useful for spotting trouble but is not ground truth. The cemetery count looks like an independent signal, but the two turn ends land on different turns and cannot be compared as they are. The first hash already combines the cemetery, so a gap shows up there instead.
+A copied install brings its cached viewer_id along, so both clients announce the same value. The receive side drops any addressed value not addressed to itself, and `spin` has that shape, so an identical id means it is always dropped. Seating therefore comes from the source IP: the API records where a request came from and Battle matches it against the socket's origin, which is the one value the client cannot pick. Two people behind one NAT share an IP too, and that falls back to a viewer_id pin and then to connection order. When both sockets announce the same id, the visitor's is shifted by one on the way out.
 
-**Ending the match on a desync**: a closing message carrying `endType=2` runs the client's internal no-contest path and comes back as 900/901. The relay already reads that as a mutual no-contest. `OPENVERSE_DESYNC` switches between `warn` (default) and `stop`. Even on `stop` it takes two consecutive broken boundaries, since one can just be a late message.
+### The mode flag
 
-**Detecting a disconnect**: a dropped line does not close a TCP socket, so the disconnect notice arrives minutes late or never. The last-received time is updated on every receive and 20 seconds of silence falls through to the disconnect result, which fits inside the 95 seconds the client itself waits before giving up.
+Without being told this is a network battle the engine takes the solo branch and draws local randoms neither client drew (`GameMgr.IsNetworkBattle` among others).
 
-**State carried between battles**: a room plays many battles, so mirror state has to be cleared per battle and released from every end path. Neither was true, so every game after the first was answering from the previous battle's board.
+### The two mirrors
 
-**Context isolation**: each mirror gets its own assembly load context (`EngineContext`). A shared pair still prints two plausible boards, so board output cannot detect the failure and the check has to be type identity.
+Each puts its own client's 40 cards on its own side and 40 dummies opposite (`MirrorPair`), the same shape the client actually holds. One message arrives at one as its own action and at the other as the opponent's, so getting them the wrong way round looks like it works and runs inverted.
 
-**Measuring ConductError**: the client posts its own log to the server with `ConductError` and its reason in it. The server was already receiving it, buried inside a request body, so it is pulled out and logged with a running count.
+The dummy's card id has to be the Goblin the client itself uses (`100011010`). A real card in that slot runs its Last Word on the mirror alone, and collides with the same value used as the "cannot state this" marker.
 
-The measured baseline, over six games against a remote friend: 30.
+### Context isolation
 
-| Reason | Count |
-| --- | --- |
-| action card not found | 11 |
-| the played card is not in hand | 10 |
-| play target not found | 4 |
-| skill selection check failed | 3 |
-| no reason logged | 2 |
+Each mirror gets its own assembly load context (`EngineContext`). Sharing one still produces plausible boards on both sides, so board output cannot detect it and only type identity can.
 
-The cards in that log, `112821010`, `125811030` and `720831010`, are the same ones the relay could not state a cost for in that session, which closes the chain from the cause section on real data.
+### One pair per room
 
-**The two mirrors**: each puts its own client's 40 cards on its own side and 40 dummies on the other (`MirrorPair`), matching the board that client actually has. The same message arrives as the client's own action on one and as the opponent's on the other, so getting it backwards would look like it works while being inverted. A test pins it.
+Mirrors are held per room and rented from a pool (`MirrorPool`). One pair per process means two concurrent rooms answer each other's questions. A room past the cap (`OPENVERSE_ENGINE_PAIRS`, default 2) is relayed without a mirror, which is safer than sharing a board.
 
-**Reading values off the mirror**: card id, cost, attack, life, spellboost count, chant, tribe and class come off the card object (`ShadowMatch.Project`). Questions about hidden zones go to whichever side owns the zone. The cost is the value after the add, set and halve modifiers have been applied, which the receiver has no way to compute.
+### Carry-over between matches
 
-It is used only where the relay could not state a value, and accepted only when the card id at that index matches and the value is between zero and the base cost. Outside that the boards disagree, so it is discarded. The fixed-use and accelerate prices are not passed on even when they can be read. The receiver decides accelerate by comparing those two, so pinning them rejects every accelerate play.
+A room holds several matches, so mirror state is cleared per match and released on every exit path. Miss either and the second match onward answers from the previous match's board.
 
-**`spin`**: the receiver re-simulates the actor's action against forty dummies, so its random cursor lands short of the actor's. `spin` is the gap and the receiver discards that many random values to catch up, but it is forward-only, so a negative gap is never sent.
+### Reading values off the mirror
 
-**One pair per room**: there was one set for the whole process, so two rooms playing at once answered each other's questions. They are keyed per room now and handed out from a pool (`MirrorPool`). Past the cap (`OPENVERSE_ENGINE_PAIRS`, default 2) a room gets none and relays without a mirror, which is safer than sharing a board.
+Card id, cost, attack, life, spellboost count, chant, tribe and class come off the mirror's own card objects (`ShadowMatch.Project`). Questions about a hidden zone go to whichever side owns that zone. Cost is the value after the add, set and halve modifiers, which the receiver has no way to compute.
 
-**The pre-send check**: straight after the receiving board ingests, whether that client would drop the message is read and a refusal is logged. The message is still sent. The actor has already committed locally, so not sending would leave one side holding a board the other never gets, which is worse than the drop.
+It is used only where the relay could not produce the value. It is accepted when the card at that index has a matching id and the value is between zero and the base cost. Outside that the boards disagree, so it is discarded. The only cards left unpriced are those with a discount whose step will not parse, and a card merely carrying a spellboost count is not one of them.
 
-**Driving from the action**: instead of the receive path, the mirror is driven through the same entry the client uses for its own actions (`ShadowMatch.PlayByIntent`). That entry is the one the AI uses and has no battle-mode branch, so it goes through more readily than the receive path.
+The fixed-use and accelerate prices are readable but not sent. The receiver decides accelerate by comparing the two, so pinning them rejects every accelerate.
 
-But turning it on moves `ShadowCostFidelityTests` from 2 to 6, counting only 13 of 16 spellboosts. So it is enabled explicitly through `OPENVERSE_ENGINE_INTENT` and off by default. A failure falls back to the receive path, so it is no worse than before, but it is not yet known to be better. That is the main open problem left.
+### Which card to state
 
-Untested, but this path skips the pre-play board repair, and on success it also skips the actor's own receive handling. The step that moves a card from deck to hand is lost, so a card the wire put in hand can still sit in the mirror's deck where no spellboost reaches it. Calling the repair first would settle it, but measure before deciding.
+A card id is stated when its destination is the field, the cemetery or banish. All three are visible to both players, so nothing leaks. Arrival in hand stays out because that would leak draws.
 
-### The copied client's viewer_id
+Destination alone is not enough. Fusion ingredients go to their own zone and do not even emit a move record, so a destination test never reaches them. Ingredients left as dummies carry no tribe, so they fail a fusion condition that requires a Commander, and a card like Chevalier Magna (`119241030`) reads as unfused. The receive check has no fusion branch, so the boards disagree with nothing erroring.
 
-Copying an install carries the cached viewer_id with it, so both clients claim the same one, and this is not only a seating problem. The client holds its own id as the value the server handed it, and the receiver discards any addressed value whose address is not its own. `spin` uses that shape too, so identical ids means every one of them is discarded.
+Alongside the destination test, every index the message makes the receiver resolve is stated as well, which covers any branch reading a hidden card's attributes.
 
-Two fixes went in:
+Only what the card data model holds can be sent, and fusion state is not in it. A card that entered the cemetery unnamed is not in the index-to-card-id table, so reviving it later cannot state a card id either.
 
-- seat off the source IP. The API records where a request came from and the Battle side matches it against the socket's peer, which is the one value the client cannot choose. Two players behind one NAT share an IP, so that case falls through to the viewer_id pin and then to connect order
-- derive the id handed to the client from the seat. When both sockets claim the same id, the owner keeps it and the visitor is offset by one
+### A token's card id
 
-### Entomb and reanimate
+A card created mid-match has an index past the deck and its card id exists nowhere else. Dropping it leaves the receiving side unable to place the card, and every later message naming that index dies with it. What tells the peer about a card cannot be handled headless and throws, so it travels to the mirror under a key the client never reads, and any index the board does not hold is built through the engine's own token path, which needs no view.
 
-Card ids were only attached to cards that landed on the field, and entomb goes hand to cemetery, so it fell outside. With no card id stated the receiver fills one in from its own dummy deck, and the entombed follower shows up as a Goblin.
+### `spin`
 
-Cemetery and banish are visible to both players and stating a card id there leaks nothing, so the destination test now covers field, cemetery and banish. Arrival in hand still stays out since that would leak draws, and a hand-to-field play belongs to another path.
+A field the wire already has, for closing a gap between the two random cursors.
 
-Reanimate looked suspect as a knock-on of this: a card that entered the cemetery unnamed is not in the index-to-card-id table, so reviving it later cannot state a card id either.
+Both sides keep random effects in agreement by drawing from the same random stream at the same position. The receiver recomputes the actor's action against 40 dummies rather than the real deck, so it draws fewer times and its cursor stops short. Every random effect after that resolves differently on the two sides.
 
-### What decides which card to state
+`spin` is the size of that gap. The receiver burns exactly that many draws to catch up. It is forward-only, so a negative gap is not sent.
 
-Chevalier Magna (`119241030`) played as a 1pp crystal strips every ability off all the opponent's followers, provided a Commander card was fused into it beforehand (attack and life stay).
+It is computed but not sent by default (`OPENVERSE_SPIN=1` to send it). The value comes from the difference between the mirrors and those are adrift themselves. Measured runs ask for wildly oversized gaps, and burning that many wrecks the hand it was meant to line up.
 
-Only the played card is stated, so the ingredients stay dummies on the receiving side. A dummy carries no tribe, so it fails the fusion condition that requires a Commander and nothing is deposited. The effect then sees no fusion and never fires, the opponent's followers keep their abilities, and later attacks get refused.
+### Board comparison
 
-The receive check has no fusion branch, so the fusion message passes it and the boards disagree with nothing erroring, which is why it went unnoticed.
+For each pair of an actor's turn end and the receiver's answer (a boundary below), the three board hashes each client sends are compared (`ConsistencyWatch`). A mismatch only logs which of the three broke.
 
-Fusion ingredients go to their own zone and do not even emit a move record, so a destination test never reaches them. The destination test stays, and a test was added that states every index the message makes the receiver resolve. That covers any branch reading a hidden card's attributes, not just fusion. Note that only what the card data model holds can be sent to the peer, and fusion state is not in it.
+Cemetery counts look like an independent signal but the two turn ends fall in different turns, so they cannot be compared as they stand. The first hash folds the cemetery in, so the drift shows up there.
 
-### A spellboost count is not always a cost cut
+### Ending a match on desync
 
-The spellboost count on the wire is a general counter incremented when a spell is played. It lands on cards with no spellboost ability at all, which is normal, and across the master the skills that read it split into 100 that cut cost against 54 that spend it on damage, tokens, healing or stats.
+`endType=2` on the finish message takes the client's own no-contest path and returns 900/901, which the relay reads as a mutual no-contest. `OPENVERSE_DESYNC` switches between `warn` (default) and `stop`. Even on `stop`, one boundary can just be late, so a match ends only after two consecutive ones break.
 
-Reading the two as one, the relay treated any card carrying a count as unpriceable and discarded cost deltas it had already recorded. In a live match Call to the Battlefield handed -1 to two cards and only one of them later caught an unrelated spellboost, so that one went out at base cost and was thrown away for lack of PP. The other card from the same message priced correctly, and the only difference was the spellboost.
+### The pre-send refusal check
 
-Cards with no discount rule are now separated from cards whose discount step would not parse, and only the latter go unpriced. Two cards qualify.
+Right after a message is run against the receiver's board, whether that client would drop it is read and logged. The send is not held back. The actor has already committed locally, so not sending leaves the board on one side only, which is worse than being dropped.
 
-The 54 that spend the count on something other than cost are not modelled at all. The actor ships concrete results so it usually does not matter, but a receiver counting its own spellboosts wrong gets the damage or the count wrong with it.
+### Driving by intent
 
-### The card id used as a placeholder
+The mirror is driven through the same entry the client uses for its own actions rather than the receive path (`ShadowMatch.PlayByIntent`). It is the entry the AI uses and has no battle-type branch, so it passes more readily than the receive path. Enabled with `OPENVERSE_ENGINE_INTENT`, off by default.
 
-The client's own dummy is a Goblin with no effect (`100011010`). The relay and the mirrors used `100111010`, which is the real Water Fairy: it has a Last Word that adds a Fairy to hand, and one less life (1/1 against 1/2).
+## Bugs
 
-Every mirror booted with forty of those facing it, so a dummy dying grew the mirror's hand and nothing else's, and the relay reads its numbers off that board. As the marker for "cannot state this" it also collided with the real card, so an Elf playing Water Fairy had its card id blanked.
+- the mirrors' boards drift from the match. That is why `spin` produces wildly wrong values, and the mirrors' PP cannot be trusted either
+- driving by intent loses cost fidelity. It is off by default to avoid that
+- a guarded constructor skips its whole body on a null asset, so a state mutation inside one is skipped on the mirror as well. Chasing the exception does not surface it
 
-Three constants held the same value, which is what kept the mistake invisible. They are one now.
+## Not implemented
 
-### A token's card id has to be stated
+- abilities that spend the spellboost count on something other than cost
+- the design of the values the server used to decide (`spin`, what to tell the peer about a card, the answers to conditions). The client only reads them, so the shapes are known but nothing records what belongs inside
 
-What tells the peer about a card cannot be handled headless and throws, so it was withheld from the mirrors. Deck cards resolve by index against the board's own forty, but a card created mid-match has an index past the deck and its card id exists nowhere else. Dropping it left the receiving side unable to place the card, and every later message naming that index died with it.
+## Structural limits
 
-It now travels to the mirror under a key the client never reads, and any index the board does not hold is built through the engine's own token path, which needs no view and works headless. The shipped capture went from 2 dropped rows out of 72 to none.
+The engine is a rebuild of the client and the difference from the original cannot be taken to zero. The build is pinned and its hash published so two hosts cannot drift apart unnoticed.
+
+The shipped capture breaks partway through, and the plays `ShadowCostFidelityTests` checks sit on the board after that break. It is useful for spotting trouble but is not ground truth.

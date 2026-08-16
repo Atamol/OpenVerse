@@ -2,7 +2,7 @@
 
 # OpenVerse roadmap and progress
 
-Current position: Phase 4 (room match). PvP runs end to end between two clients, sync bugs still being fixed.
+Current position: Phase 4 (room match). PvP runs end to end between two clients and the remaining desyncs are being closed out.
 
 ## Phase 0: Client analysis (done)
 
@@ -59,9 +59,10 @@ Details in [protocol.md](protocol.md).
 - [x] Steer to the battle server
 - [x] Socket.IO framing
 - [x] Operation protocol analysis
-- [x] Relay battles between two clients (known sync bugs: spellboost, extra turns, PP)
+- [x] Relay battles between two clients
 - [x] Run the client's battle engine headless as an observer
-- [ ] Engine adjudication (fill cost/condition blanks)
+- [x] Engine adjudication (fill cost/condition blanks)
+- [ ] Close the remaining desyncs (`spin`, the mirrors' board drift)
 
 ## Phase 5: Distribution and ops
 
