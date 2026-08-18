@@ -175,10 +175,15 @@ public static class Answer
     // ExecutionInfoCreatorBase.CheckCondition is what a CPU battle runs. On this side every skill carries a
     // NetworkExecutionInfoCreator, whose CheckCondition would answer with the injected value instead of its own
     // reading, so use CheckScanCondition, which is that class's own call straight through to the base
+    // Mirrors ActionProcessor's play path, which fills both with the same card. A field left null here comes back as
+    // an empty filter result, so a gap against the actor reads as a silent false rather than an error
+    static SkillConditionCheckerOption OptionForPlay(BattleCardBase played) =>
+        new SkillConditionCheckerOption { PlayedCard = played, SummonedCard = played };
+
     static bool Evaluate(NetworkBattleManagerBase mgr, BattleCardBase card, BattleCardBase played, SkillBase skill)
     {
         var pair = mgr.GetBattlePlayerInfoPair(card.IsPlayer);
-        var option = new SkillConditionCheckerOption { PlayedCard = played };
+        var option = OptionForPlay(played);
         BattlePlayerBase owner;
         int at = HideFromHand(played, out owner);
         try
@@ -197,7 +202,7 @@ public static class Answer
     {
         value = 0;
         var pair = mgr.GetBattlePlayerInfoPair(card.IsPlayer);
-        var option = new SkillConditionCheckerOption { PlayedCard = played };
+        var option = OptionForPlay(played);
         BattlePlayerBase owner;
         int at = HideFromHand(played, out owner);
         int full;
