@@ -3,38 +3,29 @@ using System.Collections.Generic;
 using System.Reflection;
 using Wizard;
 
-// answers the skill-condition questions the acting client puts on the wire but never answers itself.
-//
-// the actor sends a query (orderList[].skillConditionCheck: idx/skillIdx/skillCount/type/target/condition) and the
-// lost Cygames server injected the answer into the same message's knownList. without it CheckCondition discards its
-// own evaluation and returns IsReceivedSkillConditionCheck (false when nothing was injected), so the skill silently
-// does not fire on the peer.
-//
-// the fix asks the shadow engine the same question the acting engine asked itself. The spec's filter language is never
-// parsed: it only names a skill (idx + skillIdx + skillCount), and that skill's own condition is evaluated, the same
-// call a CPU battle makes. Public surface is flat (Dictionary/List/string/int/bool) since the net10 caller reaches
-// this net48 assembly by reflection with no shared types
+// Answers the skill-condition questions the acting client puts on the wire but never answers itself: the lost Cygames
+// server injected them into the same message's knownList, and without one CheckCondition drops its own reading and
+// returns IsReceivedSkillConditionCheck, so the skill does not fire on the peer.
+// Public surface is flat (Dictionary/List/string/int/bool) because the net10 caller reaches this net48 assembly by
+// reflection with no shared types
 public static class Answer
 {
     const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
 
     public static string LastError { get; private set; }
 
-    // per-spec trace of the last call, for diagnostics only. never used to decide anything
     public static List<string> LastTrace { get; private set; } = new List<string>();
 
-    // specs: the actor's orderList[].skillConditionCheck objects, each flattened to Dictionary<string,object>. One row
-    // per answerable spec in spec order. A spec the engine cannot evaluate produces no row, so a decline is per spec
-    // rather than per message. Row keys are receive-side wire keys, ready to append to the message's knownList.
-    // not reentrant: the evaluation lifts the played card out of its hand for the duration (see HideFromHand), so it
-    // must run on the one shadow worker thread and never concurrently with an ingest
+    // specs are the actor's orderList[].skillConditionCheck objects flattened, and the rows come back keyed for the
+    // receive side, ready to append to knownList. Not reentrant: the evaluation lifts the played card out of its hand
+    // (see HideFromHand), so it must run on the shadow worker thread and never alongside an ingest
     public static List<object> AnswerConditions(NetworkBattleManagerBase mgr, bool isSelfPlayer, int cardIdx, List<object> specs)
     {
         LastTrace = new List<string>();
         var rows = new List<object>();
         if (specs == null || specs.Count == 0 || mgr == null) return rows;
 
-        // two specs for one skill are its two option slots (a powerup that buffs attack AND life registers twice);
+        // Two specs for one skill are its two option slots (a powerup that buffs attack AND life registers twice), and
         // the receiving node tells them apart by their order, so the n-th spec for a skill answers its n-th slot
         var nth = new Dictionary<SkillBase, int>();
 
@@ -53,8 +44,8 @@ public static class Answer
     static Dictionary<string, object> One(NetworkBattleManagerBase mgr, bool isSelfPlayer, int cardIdx,
                                           Dictionary<string, object> spec, Dictionary<SkillBase, int> nth)
     {
-        // only these three keys are read. Type / target / condition / isPreprocess are the actor's own restatement of
-        // a filter this side already owns. trusting them would mean reimplementing the filter language
+        // Only these three keys are read. Type / target / condition / isPreprocess are the actor's own restatement of
+        // a filter this side already owns. Trusting them would mean reimplementing the filter language
         int idx = Int(spec, "idx", cardIdx);
         int skillIdx = Int(spec, "skillIdx", -1);
         int skillCount = Int(spec, "skillCount", -1);
@@ -65,18 +56,20 @@ public static class Answer
         var skill = ResolveSkill(card, skillIdx, skillCount);
         if (skill == null) { Note(idx, skillIdx, skillCount, "skill not resolvable on " + card.CardId + " -> declined"); return null; }
 
+        // A when_play_other skill sits on a different card than the one being played, so its condition names the play
+        // through target=played_card. Without this the filter resolves to nothing and every such condition reads false
+        var played = idx == cardIdx ? card : FindCard(mgr, isSelfPlayer, cardIdx);
+
         int slot = nth.TryGetValue(skill, out var n) ? n : 0;
         nth[skill] = slot + 1;
 
-        // The classification comes from this side running the actor's own CreateList over its own skill instance, not
-        // from the spec's `type` string
         var kind = Classify(idx, skillCount, skill, slot);
         if (kind == RegisterSkillConditionCheck.SkillConditionType.NONE)
         { Note(idx, skillIdx, skillCount, "CreateList produced nothing -> declined"); return null; }
 
         switch (kind)
         {
-            // nothing on the receiving side reads an answer for this one
+            // Nothing on the receiving side reads an answer for this one
             case RegisterSkillConditionCheck.SkillConditionType.moved_to_hand_count:
                 Note(idx, skillIdx, skillCount, "moved_to_hand_count -> no answer by design");
                 return null;
@@ -86,7 +79,7 @@ public static class Answer
             case RegisterSkillConditionCheck.SkillConditionType.add_deck_count_check:
             case RegisterSkillConditionCheck.SkillConditionType.check_highlander:
             {
-                bool ok = Evaluate(mgr, card, skill);
+                bool ok = Evaluate(mgr, card, played, skill);
                 Note(idx, skillIdx, skillCount, kind + " -> activate=" + (ok ? 1 : 0) + " [" + skill.GetType().Name + "]");
                 return Row(idx, skillIdx, skillCount, "activate", ok ? 1 : 0);
             }
@@ -96,11 +89,11 @@ public static class Answer
             case RegisterSkillConditionCheck.SkillConditionType.callCount:
             {
                 int v;
-                if (!Number(mgr, card, skill, slot, out v))
+                if (!Number(mgr, card, played, skill, slot, out v))
                 { Note(idx, skillIdx, skillCount, kind + " -> value not readable, declined"); return null; }
                 string key = kind == RegisterSkillConditionCheck.SkillConditionType.count ? "count"
                            : kind == RegisterSkillConditionCheck.SkillConditionType.param ? "param" : "callCount";
-                // Count / param / callCount each set activate = 1 on the receiving side by themselves. sending both
+                // Count / param / callCount each set activate = 1 on the receiving side by themselves. Sending both
                 // would be a second entry for the same skill and the second is unreachable
                 Note(idx, skillIdx, skillCount, kind + " slot" + slot + " -> " + key + "=" + v + " [" + skill.GetType().Name + "]");
                 return Row(idx, skillIdx, skillCount, key, v);
@@ -179,34 +172,34 @@ public static class Answer
     }
 
 
-    // ExecutionInfoCreatorBase.CheckCondition is what a CPU battle runs. on this side every skill carries a
+    // ExecutionInfoCreatorBase.CheckCondition is what a CPU battle runs. On this side every skill carries a
     // NetworkExecutionInfoCreator, whose CheckCondition would answer with the injected value instead of its own
     // reading, so use CheckScanCondition, which is that class's own call straight through to the base
-    static bool Evaluate(NetworkBattleManagerBase mgr, BattleCardBase card, SkillBase skill)
+    static bool Evaluate(NetworkBattleManagerBase mgr, BattleCardBase card, BattleCardBase played, SkillBase skill)
     {
         var pair = mgr.GetBattlePlayerInfoPair(card.IsPlayer);
-        var option = new SkillConditionCheckerOption();
+        var option = new SkillConditionCheckerOption { PlayedCard = played };
         BattlePlayerBase owner;
-        int at = HideFromHand(card, out owner);
+        int at = HideFromHand(played, out owner);
         try
         {
             var nx = skill._executionInfoCreator as NetworkExecutionInfoCreator;
             if (nx != null) return nx.CheckScanCondition(pair, option, false);
             return skill._executionInfoCreator.CheckCondition(pair, option, false);
         }
-        finally { Restore(card, owner, at); }
+        finally { Restore(played, owner, at); }
     }
 
     // The number is not a condition: it is the value of a variable inside the skill's own option text
     // (add_life={me.hand_other_self.tribe=levin.count}). GetReplaceOption is the client's own answer to "which option
     // slot does the injected number land in", and SetupOptionValue + GetInt is the engine evaluating that slot
-    static bool Number(NetworkBattleManagerBase mgr, BattleCardBase card, SkillBase skill, int slot, out int value)
+    static bool Number(NetworkBattleManagerBase mgr, BattleCardBase card, BattleCardBase played, SkillBase skill, int slot, out int value)
     {
         value = 0;
         var pair = mgr.GetBattlePlayerInfoPair(card.IsPlayer);
-        var option = new SkillConditionCheckerOption();
+        var option = new SkillConditionCheckerOption { PlayedCard = played };
         BattlePlayerBase owner;
-        int at = HideFromHand(card, out owner);
+        int at = HideFromHand(played, out owner);
         int full;
         string text;
         try
@@ -220,7 +213,7 @@ public static class Answer
             if (string.IsNullOrEmpty(text)) return false;
             full = skill.OptionValue.GetInt(keyword, null, isRemoveReplaceData: false);
         }
-        finally { Restore(card, owner, at); }
+        finally { Restore(played, owner, at); }
 
         // ReplaceParameter scales whatever it is handed by the option's own leading "N*" and trailing "/N" before it
         // installs it, so the wire value has to be pre-divided or the scaling lands twice
@@ -244,11 +237,9 @@ public static class Answer
         catch { return SkillFilterCreator.ContentKeyword.none; }
     }
 
-    // The shadow is asked before it has ingested the play, so the card being played is still in its owner's hand,
-    // while the acting engine evaluated with the card already out of it. taking it out for the length of the
-    // evaluation is what makes the two boards the same board. hand_other_self excludes it anyway. A bare me.hand does
-    // not, and that is the case this exists for
-    // hand_other_oldest reads hand order, so the card goes back where it was, not on the end
+    // The shadow is asked before it has ingested the play, so the played card is still in its owner's hand while the
+    // acting engine evaluated with it already out. hand_other_self excludes it either way, but a bare me.hand does not.
+    // hand_other_oldest reads hand order, so Restore puts the card back where it was rather than on the end
     static int HideFromHand(BattleCardBase card, out BattlePlayerBase owner)
     {
         owner = null;
