@@ -1,4 +1,4 @@
-![](https://progress-bar.xyz/82?width=100&title=Propgress:)
+![](https://progress-bar.xyz/90?width=100&title=Propgress:)
 
 ### [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/VMjWKegucJ)
 
@@ -37,7 +37,7 @@
 - [x] 全カード，ボイス，スリーブの解放
 - [x] デッキ編成
 - [x] 対CP
-- [ ] ルームマッチ
+- [x] ルームマッチ
 
 ## 仕組み
 
