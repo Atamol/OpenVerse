@@ -1,4 +1,4 @@
-![](https://progress-bar.xyz/90?width=100&title=Propgress:)
+![](https://progress-bar.xyz/82?width=100&title=Propgress:)
 
 ### [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/VMjWKegucJ)
 
@@ -9,7 +9,7 @@
 2026年7月1日 (水) 11:00にサービスが終了した，Shadowverse (Steam版) のエミュレーションサーバープロジェクト．  
 サービスが終了した後もデッキ編成，CPとの対戦，ルームマッチのプレイを可能にします．
 
-## できること
+## 機能
 
 ユーザーが自前でサーバーを立てることで，以下を実現します:
 - デッキの編成
@@ -27,9 +27,9 @@
 
 ## 進捗
 
-現在はルームマッチの実装が終わり，同期部分について開発中です．フェーズごとの進捗は[roadmap](docs/roadmap.md)から確認できます．
+現在はルームマッチの実装がほぼ完了し対戦が行える状態ですが，一部効果でバグが確認されており，現在はその同期部分について修正・開発中です．フェーズごとの進捗は[roadmap](docs/roadmap.md)から確認できます．
 
-![](https://progress-bar.xyz/90?width=500&title=Propgress:)
+![](https://progress-bar.xyz/82?width=500&title=Propgress:)
 
 - [x] プロジェクトの設計
 - [x] クライアントの解析 (暗号，通信フォーマット，エンドポイント)
