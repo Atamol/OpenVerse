@@ -27,9 +27,9 @@
 
 ## 進捗
 
-現在はルームマッチの実装途中です．フェーズごとの進捗は[roadmap](docs/roadmap.md)から確認できます．
+現在はルームマッチの実装が終わり，同期部分について開発中です．フェーズごとの進捗は[roadmap](docs/roadmap.md)から確認できます．
 
-![](https://progress-bar.xyz/82?width=500&title=Propgress:)
+![](https://progress-bar.xyz/90?width=500&title=Propgress:)
 
 - [x] プロジェクトの設計
 - [x] クライアントの解析 (暗号，通信フォーマット，エンドポイント)
